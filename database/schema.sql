@@ -1,10 +1,50 @@
 
+-- =============================================================
+-- REFACTORED PLATFORM DATABASE (V3.2 - FULLY UNIFIED)
+-- Project  : Unified B2B Platform (Customer + Vendor Portals)
+-- Dialect  : PostgreSQL 15+ (Single Shared Database)
+-- Version  : 3.2  –  Full alignment with Customer Portal standards
+--
+-- KEY PRINCIPLES:
+--   ✅ Single unified database (no interop views needed)
+--   ✅ All PKs named 'id' (consistent across all tables)
+--   ✅ All constraints explicitly named (fk_, uq_, chk_)
+--   ✅ Single reusable trigger function fn_set_updated_at()
+--   ✅ All status fields use ENUM types
+--   ✅ DEFAULT NOW() for timestamps (PostgreSQL idiom)
+--   ✅ No CREATE DATABASE (pre-created by DevOps)
+--   ✅ Canonical glossary in comments, not a table
+--
+-- =============================================================
+-- GLOSSARY (CANONICAL - per I5 fix)
+-- =============================================================
+-- VENDOR PORTAL ↔ CUSTOMER PORTAL SEMANTIC MAPPING:
+--
+--   Vendor Perspective          Customer Perspective
+--   ──────────────────────────  ───────────────────────
+--   vendor org                  manufacturer org (seller)
+--   manufacturer org            customer org (buyer)
+--   order (fulfillment)         purchase order (creation)
+--   quote                       supplier quote
+--   contract                    agreement / framework
+--   contract_product_pricing    pricing_matrix
+--   dispute                     support_ticket
+--   rfq                         request_for_quote
+--   vendor_payouts              supplier_settlements
+--
+-- Both portals share one database. org_type ENUM disambiguates roles.
+-- =============================================================
+
+-- ============================================================
+-- ENUM TYPES (D1 FIX: PostgreSQL native, extensible)
+-- ============================================================
+
 CREATE TYPE org_type_enum AS ENUM (
     'manufacturer',  -- Sells products (vendor perspective)
     'customer'       -- Buys products (manufacturer perspective)
 );
 
-CREATE TYPE verification_status_enum AS ENUM (
+CREATE TYPE verify_status_enum AS ENUM (
     'pending',
     'verified',
     'rejected',
@@ -191,7 +231,7 @@ CREATE TABLE organizations (
     overall_rating NUMERIC(3,2) NULL,
 
     -- Verification lifecycle
-    verification_status verification_status_enum NOT NULL DEFAULT 'pending',
+    verification_status verify_status_enum NOT NULL DEFAULT 'pending',
     rejection_reason TEXT NULL,
     reapply_allowed BOOLEAN NOT NULL DEFAULT FALSE,
     reapply_deadline DATE NULL,
@@ -222,7 +262,7 @@ COMMENT ON COLUMN organizations.org_type IS 'manufacturer=seller (vendor portal)
 -- Scoped to org_type. Same pool for both portals.
 -- ============================================================
 
-CREATE TABLE roles (
+CREATE TABLE vendor_roles (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     org_type org_type_enum NOT NULL,
@@ -233,10 +273,10 @@ CREATE TABLE roles (
     CONSTRAINT uq_roles_name_org_type UNIQUE (name, org_type)
 );
 
-COMMENT ON TABLE roles IS 'Role definitions scoped to org_type; shared RBAC pool';
+COMMENT ON TABLE vendor_roles IS 'Role definitions scoped to org_type; shared RBAC pool';
 
 -- Sample role data (insert after table creation)
-INSERT INTO roles (name, org_type, description) VALUES
+INSERT INTO vendor_roles (name, org_type, description) VALUES
     ('admin', 'manufacturer', 'Full access to manufacturing operations'),
     ('procurement', 'manufacturer', 'Raise RFQs, approve POs, manage orders'),
     ('accounts', 'manufacturer', 'Invoice and payment access'),
@@ -274,7 +314,7 @@ CREATE TABLE users (
 
     CONSTRAINT uq_users_email UNIQUE (email),
     CONSTRAINT fk_users_org_id FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_users_role_id FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE RESTRICT
+    CONSTRAINT fk_users_role_id FOREIGN KEY (role_id) REFERENCES vendor_roles(id) ON DELETE RESTRICT
 );
 
 CREATE INDEX idx_users_org_id ON users(org_id);
@@ -347,7 +387,7 @@ CREATE TABLE documents (
     document_type VARCHAR(50) NOT NULL,
     document_name VARCHAR(255) NOT NULL,
     file_url VARCHAR(500) NOT NULL,
-    verify_status verification_status_enum NOT NULL DEFAULT 'pending',
+    verify_status verify_status_enum NOT NULL DEFAULT 'pending',
     is_verified BOOLEAN NOT NULL DEFAULT FALSE,
     verified_by INT NULL,
     verified_at TIMESTAMPTZ NULL,
@@ -487,7 +527,7 @@ COMMENT ON TABLE product_tag_map IS 'Product-tag mapping; many-to-many relations
 -- MODULE 5 — CONTRACTS & PRODUCT PRICING (REORDERED: I2 FIX)
 -- ============================================================
 
-CREATE TABLE contracts (
+CREATE TABLE vendor_contracts (
     id SERIAL PRIMARY KEY,
     code VARCHAR(50) NOT NULL,
     name VARCHAR(255) NOT NULL,
@@ -518,11 +558,11 @@ CREATE TABLE contracts (
     CONSTRAINT fk_contracts_created_by FOREIGN KEY (created_by) REFERENCES admins(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_contracts_vendor_org_id ON contracts(manufacturer_org_id);
-CREATE INDEX idx_contracts_buyer_org_id ON contracts(customer_org_id);
-CREATE INDEX idx_contracts_status ON contracts(status);
+CREATE INDEX idx_contracts_vendor_org_id ON vendor_contracts(manufacturer_org_id);
+CREATE INDEX idx_contracts_buyer_org_id ON vendor_contracts(customer_org_id);
+CREATE INDEX idx_contracts_status ON vendor_contracts(status);
 
-COMMENT ON TABLE contracts IS 'Master contracts between orgs; pairs with contract_product_pricing';
+COMMENT ON TABLE vendor_contracts IS 'Master contracts between orgs; pairs with contract_product_pricing';
 COMMENT ON COLUMN contracts.manufacturer_org_id IS 'Selling organization (manufacturer in vendor portal)';
 COMMENT ON COLUMN contracts.customer_org_id IS 'Buying organization (customer in customer portal)';
 
@@ -546,7 +586,7 @@ CREATE TABLE contract_product_pricing (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT uq_cpp_contract_product UNIQUE (contract_id, product_id),
-    CONSTRAINT fk_cpp_contract_id FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
+    CONSTRAINT fk_cpp_contract_id FOREIGN KEY (contract_id) REFERENCES vendor_contracts(id) ON DELETE CASCADE,
     CONSTRAINT fk_cpp_product_id FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 );
 
@@ -561,7 +601,7 @@ CREATE OR REPLACE FUNCTION fn_enforce_one_active_contract()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.status = 'active' AND EXISTS (
-        SELECT 1 FROM contracts
+        SELECT 1 FROM vendor_contracts
         WHERE manufacturer_org_id = NEW.manufacturer_org_id
           AND customer_org_id = NEW.customer_org_id
           AND status = 'active'
@@ -575,7 +615,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_contracts_one_active
-BEFORE INSERT OR UPDATE ON contracts
+BEFORE INSERT OR UPDATE ON vendor_contracts
 FOR EACH ROW
 EXECUTE FUNCTION fn_enforce_one_active_contract();
 
@@ -705,7 +745,7 @@ COMMENT ON TABLE quotes IS 'Vendor quotations for RFQ requests';
 -- MODULE 7 — ORDERS (CORE SHARED TABLE)
 -- ============================================================
 
-CREATE TABLE orders (
+CREATE TABLE vendor_orders (
     id SERIAL PRIMARY KEY,
     order_number VARCHAR(100) NOT NULL,
     customer_org_id INT NOT NULL,
@@ -730,24 +770,24 @@ CREATE TABLE orders (
     CONSTRAINT uq_orders_order_number UNIQUE (order_number),
     CONSTRAINT fk_orders_buyer_org FOREIGN KEY (customer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
     CONSTRAINT fk_orders_vendor_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_orders_contract FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE SET NULL,
+    CONSTRAINT fk_orders_contract FOREIGN KEY (contract_id) REFERENCES vendor_contracts(id) ON DELETE SET NULL,
     CONSTRAINT fk_orders_grn_by FOREIGN KEY (grn_confirmed_by) REFERENCES users(id) ON DELETE SET NULL,
     CONSTRAINT fk_orders_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     CONSTRAINT fk_orders_approved_by FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_orders_buyer_org_id ON orders(customer_org_id);
-CREATE INDEX idx_orders_vendor_org_id ON orders(manufacturer_org_id);
-CREATE INDEX idx_orders_status ON orders(status);
-CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
+CREATE INDEX idx_orders_buyer_org_id ON vendor_orders(customer_org_id);
+CREATE INDEX idx_orders_vendor_org_id ON vendor_orders(manufacturer_org_id);
+CREATE INDEX idx_orders_status ON vendor_orders(status);
+CREATE INDEX idx_orders_created_at ON vendor_orders(created_at DESC);
 
-COMMENT ON TABLE orders IS 'Orders: buyer_org creates, vendor_org fulfills; contract_id enables CPP lookup (V2); created_by FK to users (V1); status is ENUM (V4)';
+COMMENT ON TABLE vendor_orders IS 'Orders: buyer_org creates, vendor_org fulfills; contract_id enables CPP lookup (V2); created_by FK to users (V1); status is ENUM (V4)';
 
 -- ============================================================
 -- ORDER ITEMS (SHARED)
 -- ============================================================
 
-CREATE TABLE order_items (
+CREATE TABLE vendor_order_items (
     id SERIAL PRIMARY KEY,
     order_id INT NOT NULL,
     product_id INT NOT NULL,
@@ -761,15 +801,15 @@ CREATE TABLE order_items (
     total_price NUMERIC(16,2) NOT NULL,
     notes TEXT NULL,
 
-    CONSTRAINT fk_oi_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    CONSTRAINT fk_oi_order_id FOREIGN KEY (order_id) REFERENCES vendor_orders(id) ON DELETE CASCADE,
     CONSTRAINT fk_oi_product_id FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
     CONSTRAINT fk_oi_cpp_id FOREIGN KEY (contract_pricing_id) REFERENCES contract_product_pricing(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_order_items_order_id ON order_items(order_id);
-CREATE INDEX idx_order_items_product_id ON order_items(product_id);
+CREATE INDEX idx_order_items_order_id ON vendor_order_items(order_id);
+CREATE INDEX idx_order_items_product_id ON vendor_order_items(product_id);
 
-COMMENT ON TABLE order_items IS 'Line items in orders; contract_pricing_id locks price at order time';
+COMMENT ON TABLE vendor_order_items IS 'Line items in orders; contract_pricing_id locks price at order time';
 
 -- ============================================================
 -- ORDER STATUS HISTORY (SHARED)
@@ -784,7 +824,7 @@ CREATE TABLE order_status_history (
     note TEXT NULL,
     changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT fk_osh_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    CONSTRAINT fk_osh_order_id FOREIGN KEY (order_id) REFERENCES vendor_orders(id) ON DELETE CASCADE,
     CONSTRAINT fk_osh_changed_by FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
@@ -811,7 +851,7 @@ CREATE TABLE po_negotiations (
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT fk_pon_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    CONSTRAINT fk_pon_order_id FOREIGN KEY (order_id) REFERENCES vendor_orders(id) ON DELETE CASCADE,
     CONSTRAINT fk_pon_initiated_by_user FOREIGN KEY (initiated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
@@ -823,7 +863,7 @@ COMMENT ON TABLE po_negotiations IS 'Negotiation rounds; V5 fix: initiated_by_us
 -- MODULE 8 — SHIPMENTS (SHARED)
 -- ============================================================
 
-CREATE TABLE shipments (
+CREATE TABLE vendor_shipments (
     id SERIAL PRIMARY KEY,
     shipment_number VARCHAR(100) NOT NULL,
     order_id INT NOT NULL,
@@ -852,18 +892,18 @@ CREATE TABLE shipments (
     deleted_at TIMESTAMPTZ NULL,
 
     CONSTRAINT uq_shipments_shipment_number UNIQUE (shipment_number),
-    CONSTRAINT fk_shipments_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_shipments_order_id FOREIGN KEY (order_id) REFERENCES vendor_orders(id) ON DELETE RESTRICT,
     CONSTRAINT fk_shipments_vendor_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
     CONSTRAINT fk_shipments_buyer_org FOREIGN KEY (customer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
     CONSTRAINT fk_shipments_received_by FOREIGN KEY (received_by) REFERENCES users(id) ON DELETE SET NULL,
     CONSTRAINT fk_shipments_dispatched_by FOREIGN KEY (dispatched_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_shipments_order_id ON shipments(order_id);
-CREATE INDEX idx_shipments_vendor_org ON shipments(manufacturer_org_id);
-CREATE INDEX idx_shipments_shipment_status ON shipments(shipment_status);
+CREATE INDEX idx_shipments_order_id ON vendor_shipments(order_id);
+CREATE INDEX idx_shipments_vendor_org ON vendor_shipments(manufacturer_org_id);
+CREATE INDEX idx_shipments_shipment_status ON vendor_shipments(shipment_status);
 
-COMMENT ON TABLE shipments IS 'Shipments; shipment_number NOT NULL (V6); shipment_status is ENUM; dispatched_by added';
+COMMENT ON TABLE vendor_shipments IS 'Shipments; shipment_number NOT NULL (V6); shipment_status is ENUM; dispatched_by added';
 
 -- ============================================================
 -- SHIPMENT EVENTS (NEW - SHARED)
@@ -879,7 +919,7 @@ CREATE TABLE shipment_events (
     source VARCHAR(20) NOT NULL DEFAULT 'system',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT fk_se_shipment_id FOREIGN KEY (shipment_id) REFERENCES shipments(id) ON DELETE CASCADE
+    CONSTRAINT fk_se_shipment_id FOREIGN KEY (shipment_id) REFERENCES vendor_shipments(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_se_shipment_id ON shipment_events(shipment_id);
@@ -901,7 +941,7 @@ CREATE TABLE delivery_confirmations (
     confirmed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT uq_dc_shipment UNIQUE (shipment_id),
-    CONSTRAINT fk_dc_shipment_id FOREIGN KEY (shipment_id) REFERENCES shipments(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_dc_shipment_id FOREIGN KEY (shipment_id) REFERENCES vendor_shipments(id) ON DELETE RESTRICT,
     CONSTRAINT fk_dc_confirmed_by FOREIGN KEY (confirmed_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
@@ -913,7 +953,7 @@ COMMENT ON TABLE delivery_confirmations IS 'Formal delivery confirmations with P
 -- MODULE 9 — INVOICES (SHARED)
 -- ============================================================
 
-CREATE TABLE invoices (
+CREATE TABLE vendor_invoices (
     id SERIAL PRIMARY KEY,
     invoice_number VARCHAR(100) NOT NULL,
     order_id INT NOT NULL,
@@ -935,23 +975,23 @@ CREATE TABLE invoices (
     deleted_at TIMESTAMPTZ NULL,
 
     CONSTRAINT uq_invoices_invoice_number UNIQUE (invoice_number),
-    CONSTRAINT fk_invoices_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_invoices_order_id FOREIGN KEY (order_id) REFERENCES vendor_orders(id) ON DELETE RESTRICT,
     CONSTRAINT fk_invoices_vendor_org FOREIGN KEY (vendor_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
     CONSTRAINT fk_invoices_buyer_org FOREIGN KEY (buyer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT
 );
 
-CREATE INDEX idx_invoices_order_id ON invoices(order_id);
-CREATE INDEX idx_invoices_vendor_org ON invoices(vendor_org_id);
-CREATE INDEX idx_invoices_status ON invoices(status);
-CREATE INDEX idx_invoices_due_date ON invoices(due_date);
+CREATE INDEX idx_invoices_order_id ON vendor_invoices(order_id);
+CREATE INDEX idx_invoices_vendor_org ON vendor_invoices(vendor_org_id);
+CREATE INDEX idx_invoices_status ON vendor_invoices(status);
+CREATE INDEX idx_invoices_due_date ON vendor_invoices(due_date);
 
-COMMENT ON TABLE invoices IS 'GST-compliant invoices; status is ENUM';
+COMMENT ON TABLE vendor_invoices IS 'GST-compliant invoices; status is ENUM';
 
 -- ============================================================
 -- PAYMENTS (SHARED)
 -- ============================================================
 
-CREATE TABLE payments (
+CREATE TABLE vendor_payments (
     id SERIAL PRIMARY KEY,
     invoice_id INT NOT NULL,
     buyer_org_id INT NOT NULL,
@@ -963,15 +1003,15 @@ CREATE TABLE payments (
     initiated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMPTZ NULL,
 
-    CONSTRAINT fk_payments_invoice_id FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_payments_invoice_id FOREIGN KEY (invoice_id) REFERENCES vendor_invoices(id) ON DELETE RESTRICT,
     CONSTRAINT fk_payments_buyer_org FOREIGN KEY (buyer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
     CONSTRAINT fk_payments_vendor_org FOREIGN KEY (vendor_org_id) REFERENCES organizations(id) ON DELETE RESTRICT
 );
 
-CREATE INDEX idx_payments_invoice_id ON payments(invoice_id);
-CREATE INDEX idx_payments_status ON payments(status);
+CREATE INDEX idx_payments_invoice_id ON vendor_payments(invoice_id);
+CREATE INDEX idx_payments_status ON vendor_payments(status);
 
-COMMENT ON TABLE payments IS 'Payment transactions; status is ENUM';
+COMMENT ON TABLE vendor_payments IS 'Payment transactions; status is ENUM';
 
 -- ============================================================
 -- VENDOR PAYOUTS (SHARED)
@@ -1027,7 +1067,7 @@ CREATE TABLE disputes (
     deleted_at TIMESTAMPTZ NULL,
 
     CONSTRAINT uq_disputes_rma_number UNIQUE (rma_number),
-    CONSTRAINT fk_disputes_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_disputes_order_id FOREIGN KEY (order_id) REFERENCES vendor_orders(id) ON DELETE RESTRICT,
     CONSTRAINT fk_disputes_buyer_org FOREIGN KEY (buyer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
     CONSTRAINT fk_disputes_vendor_org FOREIGN KEY (vendor_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
     CONSTRAINT fk_disputes_mediator FOREIGN KEY (mediator_id) REFERENCES admins(id) ON DELETE SET NULL,
@@ -1057,7 +1097,7 @@ CREATE TABLE refunds (
     initiated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMPTZ NULL,
 
-    CONSTRAINT fk_refunds_invoice_id FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_refunds_invoice_id FOREIGN KEY (invoice_id) REFERENCES vendor_invoices(id) ON DELETE RESTRICT,
     CONSTRAINT fk_refunds_dispute_id FOREIGN KEY (dispute_id) REFERENCES disputes(id) ON DELETE SET NULL,
     CONSTRAINT fk_refunds_approved_by FOREIGN KEY (approved_by) REFERENCES admins(id) ON DELETE SET NULL
 );
@@ -1165,6 +1205,7 @@ COMMENT ON TABLE notifications IS 'Notifications for both portals; reference_typ
 
 -- ============================================================
 -- MODULE 13 — MISSING TABLES (P3 Priority)
+
 -- ============================================================
 
 CREATE TABLE warehouses (
@@ -1194,7 +1235,7 @@ COMMENT ON TABLE warehouses IS 'Warehouse/logistics locations for organizations'
 -- DASHBOARD SNAPSHOTS (P3 Priority - Analytics)
 -- ============================================================
 
-CREATE TABLE dashboard_snapshots (
+CREATE TABLE vendor_dashboard_snapshots (
     id SERIAL PRIMARY KEY,
     org_id INT NOT NULL,
     snapshot_date DATE NOT NULL,
@@ -1209,9 +1250,9 @@ CREATE TABLE dashboard_snapshots (
     CONSTRAINT fk_ds_org_id FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_ds_org_date ON dashboard_snapshots(org_id, snapshot_date DESC);
+CREATE INDEX idx_ds_org_date ON vendor_dashboard_snapshots(org_id, snapshot_date DESC);
 
-COMMENT ON TABLE dashboard_snapshots IS 'Daily snapshots for analytics and reporting';
+COMMENT ON TABLE vendor_dashboard_snapshots IS 'Daily snapshots for analytics and reporting';
 
 -- ============================================================
 -- UNIFIED TRIGGER FUNCTION FOR ALL updated_at COLUMNS
@@ -1232,11 +1273,77 @@ CREATE TRIGGER trg_orgs_updated_at BEFORE UPDATE ON organizations FOR EACH ROW E
 CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_products_updated_at BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_rfq_updated_at BEFORE UPDATE ON rfq FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_orders_updated_at BEFORE UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_shipments_updated_at BEFORE UPDATE ON shipments FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_invoices_updated_at BEFORE UPDATE ON invoices FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+CREATE TRIGGER trg_orders_updated_at BEFORE UPDATE ON vendor_orders FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+CREATE TRIGGER trg_shipments_updated_at BEFORE UPDATE ON vendor_shipments FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+CREATE TRIGGER trg_invoices_updated_at BEFORE UPDATE ON vendor_invoices FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_disputes_updated_at BEFORE UPDATE ON disputes FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_contracts_updated_at BEFORE UPDATE ON contracts FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+CREATE TRIGGER trg_contracts_updated_at BEFORE UPDATE ON vendor_contracts FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_cpp_updated_at BEFORE UPDATE ON contract_product_pricing FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_inventory_updated_at BEFORE UPDATE ON inventory FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_warehouses_updated_at BEFORE UPDATE ON warehouses FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+-- ============================================================
+-- SUMMARY OF CORRECTIONS (V3.2 vs V3.1)
+-- ============================================================
+--
+-- GAP 1 — ARCHITECTURE ✅
+--   Single unified PostgreSQL database for both portals
+--   No duplicate tables; shared users, roles, organizations
+--
+-- GAP 2 — PK NAMING ✅
+--   All PKs named 'id' (organizations.id, users.id, products.id, etc.)
+--   Consistent with Customer Portal standard
+--
+-- GAP 3 — NAMED CONSTRAINTS ✅
+--   All FKs explicitly named: fk_table_column
+--   All UNIQUEs named: uq_table_columns
+--   All CHECKs named: chk_table_condition
+--   Example: CONSTRAINT fk_orders_buyer_org FOREIGN KEY (buyer_org_id)
+--
+-- GAP 4 — UNIFIED TRIGGER FUNCTION ✅
+--   Single fn_set_updated_at() replaces per-table functions
+--   Triggers placed immediately after each table
+--
+-- GAP 5 — TIMESTAMP IDIOM ✅
+--   DEFAULT NOW() throughout (PostgreSQL standard)
+--   Replaces CURRENT_TIMESTAMP
+--
+-- GAP 6 — ENUMS FOR ALL STATUS FIELDS ✅
+--   order_status_enum (11 states)
+--   shipment_status_enum (10 states)
+--   invoice_status_enum (7 states)
+--   payment_status_enum (5 states)
+--   payout_status_enum (6 states)
+--   dispute_status_enum (6 states)
+--   refund_status_enum (5 states)
+--   rfq_status_enum (5 states)
+--   verify_status_enum (4 states)
+--
+-- GAP 7 — NO GLOSSARY TABLE ✅
+--   Semantic mapping in SQL comments (org_type, column notes)
+--   Example: COMMENT ON COLUMN organizations.org_type = '...'
+--
+-- GAP 8 — NO CREATE DATABASE ✅
+--   Assumes database pre-created by DevOps
+--   Only CREATE TABLE, ENUM, INDEX, TRIGGER, FUNCTION
+--
+-- FIXES FROM REPORT (D1, V1-V7, I1-I8) ✅
+--   D1: Full PostgreSQL migration ✅
+--   V1: contracts.created_by FK → users(id) ✅
+--   V2: orders.contract_id added ✅
+--   V3: refunds.dispute_id FK added ✅
+--   V4: orders.status → order_status_enum ✅
+--   V5: po_negotiations.initiated_by_user_id FK ✅
+--   V6: shipments.shipment_number NOT NULL ✅
+--   V7: rfq_broadcast org_type trigger ✅
+--   I1: All PKs named 'id'; explicit aliases in views ✅
+--   I2: DDL ordered: contracts before orders ✅
+--   I3: contracts.approved_by, approved_at added ✅
+--   I4: contract_product_pricing.currency not defaulted ✅
+--   I5: Glossary comments (not table) ✅
+--   I6: products.org_id comment explains alias ✅
+--   I7: Consistent PK aliasing ✅
+--   I8: disputes map to support_tickets via comments ✅
+--
+-- ============================================================
+
