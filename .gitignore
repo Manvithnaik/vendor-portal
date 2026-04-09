@@ -1,5 +1,93 @@
+# =========================
+# OPERATING SYSTEM
+# =========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# =========================
+# DATABASE & VOLUMES (Critical to prevent repo corruption)
+# =========================
+# Never push raw database binaries or data volumes into Git
+pgdata/
+.data/
+data/
+*.sqlite3
+*.sqlite
+*.db
+dump.rdb
+
+# =========================
+# PYTHON / BACKEND
+# =========================
 __pycache__/
-.env
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments & Secrets
 venv/
+.venv/
+env/
+ENV/
+.env
+.env.local
+.env.*.local
+
+# Pytest & Coverage
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# =========================
+# NODE.js / FRONTEND
+# =========================
 node_modules/
+jspm_packages/
+.npm/
+.yarn/
+dist/
+out/
+build/
+.next/
+.nuxt/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 *.log
+
+# =========================
+# IDEs / EDITORS
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
