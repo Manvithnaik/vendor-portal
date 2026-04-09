@@ -1,80 +1,29 @@
--- =============================================================
--- REFACTORED PLATFORM DATABASE (V3.2 - FULLY UNIFIED)
--- Project  : Unified B2B Platform (Customer + Vendor Portals)
--- Dialect  : PostgreSQL 15+ (Single Shared Database)
--- Version  : 3.2  –  Full alignment with Customer Portal standards
---
--- KEY PRINCIPLES:
---   ✅ Single unified database (no interop views needed)
---   ✅ All PKs named 'id' (consistent across all tables)
---   ✅ All constraints explicitly named (fk_, uq_, chk_)
---   ✅ Single reusable trigger function fn_set_updated_at()
---   ✅ All status fields use ENUM types
---   ✅ DEFAULT NOW() for timestamps (PostgreSQL idiom)
---   ✅ No CREATE DATABASE (pre-created by DevOps)
---   ✅ Canonical glossary in comments, not a table
---
--- =============================================================
--- GLOSSARY (CANONICAL - per I5 fix)
--- =============================================================
--- VENDOR PORTAL ↔ CUSTOMER PORTAL SEMANTIC MAPPING:
---
---   Vendor Perspective          Customer Perspective
---   ──────────────────────────  ───────────────────────
---   vendor org                  manufacturer org (seller)
---   manufacturer org            customer org (buyer)
---   order (fulfillment)         purchase order (creation)
---   quote                       supplier quote
---   contract                    agreement / framework
---   contract_product_pricing    pricing_matrix
---   dispute                     support_ticket
---   rfq                         request_for_quote
---   vendor_payouts              supplier_settlements
---
--- Both portals share one database. org_type ENUM disambiguates roles.
--- =============================================================
-
--- ============================================================
--- ENUM TYPES (D1 FIX: PostgreSQL native, extensible)
--- ============================================================
 
 CREATE TYPE org_type_enum AS ENUM (
     'manufacturer',  -- Sells products (vendor perspective)
-    'customer',      -- Buys products (manufacturer perspective)
-    'admin'          -- Platform admin
+    'customer'       -- Buys products (manufacturer perspective)
 );
 
 CREATE TYPE verification_status_enum AS ENUM (
     'pending',
-    'approved',
+    'verified',
     'rejected',
-    'reapplied'
-);
-
-CREATE TYPE role_name_enum AS ENUM (
-    'super_admin',
-    'admin',
-    'procurement',
-    'sales',
-    'accounts',
-    'dispatch',
-    'inventory',
-    'viewer'
+    'expired'
 );
 
 CREATE TYPE order_status_enum AS ENUM (
     'draft',
-    'sent',
+    'submitted',
     'confirmed',
-    'negotiating',
-    'declined',
     'processing',
     'ready_to_ship',
-    'dispatched',
-    'in_transit',
+    'shipped',
     'delivered',
     'cancelled',
-    'disputed'
+    'disputed',
+    'sent',
+    'negotiating',
+    'declined'
 );
 
 CREATE TYPE shipment_status_enum AS ENUM (
@@ -209,7 +158,7 @@ COMMENT ON TABLE admins IS 'Platform super-admin accounts; separate from org use
 CREATE TABLE organizations (
     id SERIAL PRIMARY KEY,
     org_type org_type_enum NOT NULL,
-    company_name VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL,
     email VARCHAR(150) NOT NULL,
     phone VARCHAR(20) NULL,
     password_hash VARCHAR(255) NULL,
@@ -275,7 +224,7 @@ COMMENT ON COLUMN organizations.org_type IS 'manufacturer=seller (vendor portal)
 
 CREATE TABLE roles (
     id SERIAL PRIMARY KEY,
-    name role_name_enum NOT NULL,
+    name VARCHAR(100) NOT NULL,
     org_type org_type_enum NOT NULL,
     description TEXT NULL,
     permissions JSONB NULL,
@@ -311,13 +260,14 @@ CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     org_id INT NOT NULL,
     role_id INT NOT NULL,
-    full_name VARCHAR(150) NOT NULL,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
     email VARCHAR(150) NOT NULL,
     phone VARCHAR(20) NULL,
     password_hash VARCHAR(255) NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     is_purchasing_authority BOOLEAN NOT NULL DEFAULT FALSE,
-    last_login_at TIMESTAMPTZ NULL,
+    last_login TIMESTAMPTZ NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ NULL,
@@ -542,8 +492,8 @@ CREATE TABLE contracts (
     code VARCHAR(50) NOT NULL,
     name VARCHAR(255) NOT NULL,
     type VARCHAR(30) NOT NULL,
-    vendor_org_id INT NULL,
-    buyer_org_id INT NULL,
+    manufacturer_org_id INT NULL,
+    customer_org_id INT NULL,
     valid_from DATE NULL,
     valid_till DATE NULL,
     renewal_type VARCHAR(10) NOT NULL DEFAULT 'manual',
@@ -562,19 +512,19 @@ CREATE TABLE contracts (
     deleted_at TIMESTAMPTZ NULL,
 
     CONSTRAINT uq_contracts_code UNIQUE (code),
-    CONSTRAINT fk_contracts_vendor_org FOREIGN KEY (vendor_org_id) REFERENCES organizations(id) ON DELETE SET NULL,
-    CONSTRAINT fk_contracts_buyer_org FOREIGN KEY (buyer_org_id) REFERENCES organizations(id) ON DELETE SET NULL,
+    CONSTRAINT fk_contracts_vendor_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE SET NULL,
+    CONSTRAINT fk_contracts_buyer_org FOREIGN KEY (customer_org_id) REFERENCES organizations(id) ON DELETE SET NULL,
     CONSTRAINT fk_contracts_approved_by FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL,
     CONSTRAINT fk_contracts_created_by FOREIGN KEY (created_by) REFERENCES admins(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_contracts_vendor_org_id ON contracts(vendor_org_id);
-CREATE INDEX idx_contracts_buyer_org_id ON contracts(buyer_org_id);
+CREATE INDEX idx_contracts_vendor_org_id ON contracts(manufacturer_org_id);
+CREATE INDEX idx_contracts_buyer_org_id ON contracts(customer_org_id);
 CREATE INDEX idx_contracts_status ON contracts(status);
 
 COMMENT ON TABLE contracts IS 'Master contracts between orgs; pairs with contract_product_pricing';
-COMMENT ON COLUMN contracts.vendor_org_id IS 'Selling organization (manufacturer in vendor portal)';
-COMMENT ON COLUMN contracts.buyer_org_id IS 'Buying organization (customer in customer portal)';
+COMMENT ON COLUMN contracts.manufacturer_org_id IS 'Selling organization (manufacturer in vendor portal)';
+COMMENT ON COLUMN contracts.customer_org_id IS 'Buying organization (customer in customer portal)';
 
 -- ============================================================
 -- CONTRACT PRODUCT PRICING (I2, I4 FIX)
@@ -612,8 +562,8 @@ RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.status = 'active' AND EXISTS (
         SELECT 1 FROM contracts
-        WHERE vendor_org_id = NEW.vendor_org_id
-          AND buyer_org_id = NEW.buyer_org_id
+        WHERE manufacturer_org_id = NEW.manufacturer_org_id
+          AND customer_org_id = NEW.customer_org_id
           AND status = 'active'
           AND deleted_at IS NULL
           AND id != NEW.id
@@ -758,8 +708,8 @@ COMMENT ON TABLE quotes IS 'Vendor quotations for RFQ requests';
 CREATE TABLE orders (
     id SERIAL PRIMARY KEY,
     order_number VARCHAR(100) NOT NULL,
-    buyer_org_id INT NOT NULL,
-    vendor_org_id INT NOT NULL,
+    customer_org_id INT NOT NULL,
+    manufacturer_org_id INT NOT NULL,
     contract_id INT NULL,
     status order_status_enum NOT NULL DEFAULT 'draft',
     priority VARCHAR(10) NOT NULL DEFAULT 'normal',
@@ -778,16 +728,16 @@ CREATE TABLE orders (
     deleted_at TIMESTAMPTZ NULL,
 
     CONSTRAINT uq_orders_order_number UNIQUE (order_number),
-    CONSTRAINT fk_orders_buyer_org FOREIGN KEY (buyer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_orders_vendor_org FOREIGN KEY (vendor_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_orders_buyer_org FOREIGN KEY (customer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_orders_vendor_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
     CONSTRAINT fk_orders_contract FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE SET NULL,
     CONSTRAINT fk_orders_grn_by FOREIGN KEY (grn_confirmed_by) REFERENCES users(id) ON DELETE SET NULL,
     CONSTRAINT fk_orders_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     CONSTRAINT fk_orders_approved_by FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_orders_buyer_org_id ON orders(buyer_org_id);
-CREATE INDEX idx_orders_vendor_org_id ON orders(vendor_org_id);
+CREATE INDEX idx_orders_buyer_org_id ON orders(customer_org_id);
+CREATE INDEX idx_orders_vendor_org_id ON orders(manufacturer_org_id);
 CREATE INDEX idx_orders_status ON orders(status);
 CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
 
@@ -877,8 +827,8 @@ CREATE TABLE shipments (
     id SERIAL PRIMARY KEY,
     shipment_number VARCHAR(100) NOT NULL,
     order_id INT NOT NULL,
-    vendor_org_id INT NOT NULL,
-    buyer_org_id INT NOT NULL,
+    manufacturer_org_id INT NOT NULL,
+    customer_org_id INT NOT NULL,
     is_partial BOOLEAN NOT NULL DEFAULT FALSE,
     shipment_status shipment_status_enum NOT NULL DEFAULT 'created',
     carrier_name VARCHAR(255) NULL,
@@ -903,14 +853,14 @@ CREATE TABLE shipments (
 
     CONSTRAINT uq_shipments_shipment_number UNIQUE (shipment_number),
     CONSTRAINT fk_shipments_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_shipments_vendor_org FOREIGN KEY (vendor_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_shipments_buyer_org FOREIGN KEY (buyer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_shipments_vendor_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_shipments_buyer_org FOREIGN KEY (customer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
     CONSTRAINT fk_shipments_received_by FOREIGN KEY (received_by) REFERENCES users(id) ON DELETE SET NULL,
     CONSTRAINT fk_shipments_dispatched_by FOREIGN KEY (dispatched_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_shipments_order_id ON shipments(order_id);
-CREATE INDEX idx_shipments_vendor_org ON shipments(vendor_org_id);
+CREATE INDEX idx_shipments_vendor_org ON shipments(manufacturer_org_id);
 CREATE INDEX idx_shipments_shipment_status ON shipments(shipment_status);
 
 COMMENT ON TABLE shipments IS 'Shipments; shipment_number NOT NULL (V6); shipment_status is ENUM; dispatched_by added';
@@ -1290,5 +1240,3 @@ CREATE TRIGGER trg_contracts_updated_at BEFORE UPDATE ON contracts FOR EACH ROW 
 CREATE TRIGGER trg_cpp_updated_at BEFORE UPDATE ON contract_product_pricing FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_inventory_updated_at BEFORE UPDATE ON inventory FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 CREATE TRIGGER trg_warehouses_updated_at BEFORE UPDATE ON warehouses FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-
--- 
