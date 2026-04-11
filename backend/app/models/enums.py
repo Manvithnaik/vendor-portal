@@ -1,0 +1,178 @@
+"""
+Python Enum classes mirroring every PostgreSQL ENUM type in schema.sql.
+These are used by SQLAlchemy models AND Pydantic schemas.
+"""
+import enum
+
+
+class OrgTypeEnum(str, enum.Enum):
+    customer = "customer"
+    manufacturer = "manufacturer"
+
+
+class RoleOrgTypeEnum(str, enum.Enum):
+    customer = "customer"
+    manufacturer = "manufacturer"
+    both = "both"
+
+
+class VerifyStatusEnum(str, enum.Enum):
+    pending = "pending"
+    verified = "verified"
+    rejected = "rejected"
+    expired = "expired"
+
+
+class ContractStatusEnum(str, enum.Enum):
+    draft = "draft"
+    active = "active"
+    suspended = "suspended"
+    expired = "expired"
+    terminated = "terminated"
+
+
+class OrderStatusEnum(str, enum.Enum):
+    draft = "draft"
+    submitted = "submitted"
+    confirmed = "confirmed"
+    processing = "processing"
+    ready_to_ship = "ready_to_ship"
+    shipped = "shipped"
+    delivered = "delivered"
+    cancelled = "cancelled"
+    disputed = "disputed"
+
+
+class OrderPriorityEnum(str, enum.Enum):
+    normal = "normal"
+    urgent = "urgent"
+
+
+class ShipmentStatusEnum(str, enum.Enum):
+    pending = "pending"
+    preparing = "preparing"
+    picked_up = "picked_up"
+    dispatched = "dispatched"
+    in_transit = "in_transit"
+    out_for_delivery = "out_for_delivery"
+    delivered = "delivered"
+    failed = "failed"
+    returned = "returned"
+    cancelled = "cancelled"
+
+
+class EventSourceEnum(str, enum.Enum):
+    carrier_api = "carrier_api"
+    manual = "manual"
+    system = "system"
+
+
+class TicketCategoryEnum(str, enum.Enum):
+    order_issue = "order_issue"
+    payment_dispute = "payment_dispute"
+    shipment_issue = "shipment_issue"
+    product_quality = "product_quality"
+    account = "account"
+    other = "other"
+
+
+class PriorityEnum(str, enum.Enum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+    critical = "critical"
+
+
+class TicketStatusEnum(str, enum.Enum):
+    # Customer portal states
+    open = "open"
+    in_progress = "in_progress"
+    awaiting_customer = "awaiting_customer"
+    awaiting_manufacturer = "awaiting_manufacturer"
+    # Vendor portal dispute states
+    requested = "requested"
+    acknowledged = "acknowledged"
+    investigating = "investigating"
+    escalated = "escalated"
+    # Shared terminal states
+    resolved = "resolved"
+    closed = "closed"
+
+
+class PaymentMethodEnum(str, enum.Enum):
+    bank_transfer = "bank_transfer"
+    credit_card = "credit_card"
+    letter_of_credit = "letter_of_credit"
+    net_terms = "net_terms"
+
+
+class PaymentStatusEnum(str, enum.Enum):
+    pending = "pending"
+    processing = "processing"
+    completed = "completed"
+    failed = "failed"
+    refunded = "refunded"
+
+
+class InvoiceStatusEnum(str, enum.Enum):
+    draft = "draft"
+    issued = "issued"
+    partially_paid = "partially_paid"
+    paid = "paid"
+    overdue = "overdue"
+    cancelled = "cancelled"
+    disputed = "disputed"
+
+
+class CrmInteractionEnum(str, enum.Enum):
+    call = "call"
+    email = "email"
+    meeting = "meeting"
+    demo = "demo"
+    follow_up = "follow_up"
+    note = "note"
+
+
+class CrmTaskTypeEnum(str, enum.Enum):
+    follow_up = "follow_up"
+    contract_renewal = "contract_renewal"
+    onboarding = "onboarding"
+    issue_resolution = "issue_resolution"
+    other = "other"
+
+
+class CrmTaskStatusEnum(str, enum.Enum):
+    pending = "pending"
+    in_progress = "in_progress"
+    completed = "completed"
+    cancelled = "cancelled"
+
+
+class ResetMethodEnum(str, enum.Enum):
+    otp = "otp"
+    email_link = "email_link"
+
+
+class PayoutStatusEnum(str, enum.Enum):
+    scheduled = "scheduled"
+    approved = "approved"
+    processing = "processing"
+    completed = "completed"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+class RfqStatusEnum(str, enum.Enum):
+    draft = "draft"
+    active = "active"
+    extended = "extended"
+    closed = "closed"
+    cancelled = "cancelled"
+
+
+class RefundStatusEnum(str, enum.Enum):
+    initiated = "initiated"
+    approved = "approved"
+    processing = "processing"
+    completed = "completed"
+    rejected = "rejected"

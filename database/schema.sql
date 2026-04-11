@@ -1,655 +1,1089 @@
 
--- =============================================================
--- REFACTORED PLATFORM DATABASE (V3.2 - FULLY UNIFIED)
--- Project  : Unified B2B Platform (Customer + Vendor Portals)
--- Dialect  : PostgreSQL 15+ (Single Shared Database)
--- Version  : 3.2  –  Full alignment with Customer Portal standards
---
--- KEY PRINCIPLES:
---   ✅ Single unified database (no interop views needed)
---   ✅ All PKs named 'id' (consistent across all tables)
---   ✅ All constraints explicitly named (fk_, uq_, chk_)
---   ✅ Single reusable trigger function fn_set_updated_at()
---   ✅ All status fields use ENUM types
---   ✅ DEFAULT NOW() for timestamps (PostgreSQL idiom)
---   ✅ No CREATE DATABASE (pre-created by DevOps)
---   ✅ Canonical glossary in comments, not a table
---
--- =============================================================
--- GLOSSARY (CANONICAL - per I5 fix)
--- =============================================================
--- VENDOR PORTAL ↔ CUSTOMER PORTAL SEMANTIC MAPPING:
---
---   Vendor Perspective          Customer Perspective
---   ──────────────────────────  ───────────────────────
---   vendor org                  manufacturer org (seller)
---   manufacturer org            customer org (buyer)
---   order (fulfillment)         purchase order (creation)
---   quote                       supplier quote
---   contract                    agreement / framework
---   contract_product_pricing    pricing_matrix
---   dispute                     support_ticket
---   rfq                         request_for_quote
---   vendor_payouts              supplier_settlements
---
--- Both portals share one database. org_type ENUM disambiguates roles.
+-- TABLE INDEX
+--  1. Shared Infrastructure  (types, trigger function)
+--  2. Account & Profile Management
+--     organizations, roles, users, user_sessions,
+--     password_reset_tokens,
+--     business_verification_certificates, manufacturer_financial_details
+--  3. Contracts (B2B many-to-many bridge)
+--     contracts
+--  4. Marketplace & Discovery
+--     product_categories, products, product_tags, product_tag_map,
+--     contract_product_pricing, supply_chain_logistics
+--  5. Order Management
+--     orders, order_items, order_status_history
+--  6. Transaction & Financial Tools
+--     payment_profiles, invoices, payments
+--  7. Shipment & Delivery Tracking
+--     shipments, shipment_events, delivery_confirmations
+--  8. Support & Complaint Resolution
+--     support_tickets, ticket_messages, ticket_status_history
+--  9. Analysis Dashboard
+--     dashboard_snapshots
+-- 10. CRM (out-of-scope for requirements – retained for completeness)
+--     crm_interactions, crm_tasks, crm_notes
 -- =============================================================
 
--- ============================================================
--- ENUM TYPES (D1 FIX: PostgreSQL native, extensible)
--- ============================================================
 
-CREATE TYPE org_type_enum AS ENUM (
-    'manufacturer',  -- Sells products (vendor perspective)
-    'customer'       -- Buys products (manufacturer perspective)
-);
+-- =============================================================
+-- 1. SHARED INFRASTRUCTURE
+-- =============================================================
 
-CREATE TYPE verify_status_enum AS ENUM (
-    'pending',
-    'verified',
-    'rejected',
-    'expired'
-);
+-- [FIX-01] Centralised ENUM types (PostgreSQL requires named types)
 
-CREATE TYPE order_status_enum AS ENUM (
-    'draft',
-    'submitted',
-    'confirmed',
-    'processing',
+CREATE TYPE org_type_enum         AS ENUM ('customer', 'manufacturer');
+CREATE TYPE role_org_type_enum    AS ENUM ('customer', 'manufacturer', 'both');
+CREATE TYPE verify_status_enum    AS ENUM ('pending', 'verified', 'rejected', 'expired');
+CREATE TYPE contract_status_enum  AS ENUM ('draft', 'active', 'suspended', 'expired', 'terminated');
+CREATE TYPE order_status_enum     AS ENUM (
+    'draft', 'submitted', 'confirmed',
+    'processing',           -- [FIX-08] replaces MySQL 'in_production' to match requirements
     'ready_to_ship',
-    'shipped',
-    'delivered',
-    'cancelled',
-    'disputed'
+    'shipped', 'delivered', 'cancelled', 'disputed'
+);
+CREATE TYPE order_priority_enum   AS ENUM ('normal', 'urgent');
+CREATE TYPE shipment_status_enum  AS ENUM (
+    'pending', 'preparing', 'picked_up',
+    'dispatched',                        -- added: vendor portal dispatch step
+    'in_transit', 'out_for_delivery',
+    'delivered', 'failed', 'returned',
+    'cancelled'                          -- added: vendor portal cancellation
+);
+CREATE TYPE event_source_enum     AS ENUM ('carrier_api', 'manual', 'system');
+CREATE TYPE ticket_cat_enum       AS ENUM (
+    'order_issue', 'payment_dispute', 'shipment_issue',
+    'product_quality', 'account', 'other'
+);
+CREATE TYPE priority_enum         AS ENUM ('low', 'medium', 'high', 'critical');
+CREATE TYPE ticket_status_enum    AS ENUM (
+    -- Customer portal states
+    'open', 'in_progress', 'awaiting_customer', 'awaiting_manufacturer',
+    -- Vendor portal dispute states
+    'requested', 'acknowledged', 'investigating', 'escalated',
+    -- Shared terminal states
+    'resolved', 'closed'
+);
+CREATE TYPE payment_method_enum   AS ENUM ('bank_transfer', 'credit_card', 'letter_of_credit', 'net_terms');
+CREATE TYPE payment_status_enum   AS ENUM ('pending', 'processing', 'completed', 'failed', 'refunded');
+CREATE TYPE invoice_status_enum   AS ENUM (
+    'draft', 'issued', 'partially_paid', 'paid',
+    'overdue', 'cancelled', 'disputed'
+);
+CREATE TYPE crm_interaction_enum  AS ENUM ('call', 'email', 'meeting', 'demo', 'follow_up', 'note');
+CREATE TYPE crm_task_type_enum    AS ENUM ('follow_up', 'contract_renewal', 'onboarding', 'issue_resolution', 'other');
+CREATE TYPE crm_task_status_enum  AS ENUM ('pending', 'in_progress', 'completed', 'cancelled');
+CREATE TYPE reset_method_enum     AS ENUM ('otp', 'email_link');  -- [FIX-02]
+-- Vendor portal ENUMs
+CREATE TYPE payout_status_enum    AS ENUM ('scheduled', 'approved', 'processing', 'completed', 'failed', 'cancelled');
+CREATE TYPE rfq_status_enum       AS ENUM ('draft', 'active', 'extended', 'closed', 'cancelled');
+CREATE TYPE refund_status_enum    AS ENUM ('initiated', 'approved', 'processing', 'completed', 'rejected');
+
+
+-- [FIX-01] Reusable trigger function for updated_at (replaces MySQL ON UPDATE)
+CREATE OR REPLACE FUNCTION fn_set_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+
+-- =============================================================
+-- 2. ACCOUNT & PROFILE MANAGEMENT
+-- =============================================================
+
+CREATE TABLE organizations (
+    id              SERIAL          PRIMARY KEY,
+    name            VARCHAR(255)    NOT NULL,
+    org_type        org_type_enum   NOT NULL,
+    email           VARCHAR(255)    NOT NULL,
+    phone           VARCHAR(50),
+    address_line1   VARCHAR(255),
+    address_line2   VARCHAR(255),
+    city            VARCHAR(100),
+    state           VARCHAR(100),
+    country         VARCHAR(100),
+    postal_code     VARCHAR(20),
+    website         VARCHAR(255),
+    logo_url        VARCHAR(500),
+    -- Vendor portal fields (NULL for customer orgs)
+    contact_name                VARCHAR(150),
+    contact_email               VARCHAR(150),
+    contact_phone               VARCHAR(20),
+    about                       TEXT,
+    industry_type               VARCHAR(100),
+    factory_address             TEXT,
+    authorised_signatory_name   VARCHAR(255),
+    authorised_signatory_phone  VARCHAR(20),
+    overall_rating              NUMERIC(3,2),
+    verification_status         verify_status_enum  NOT NULL DEFAULT 'pending',
+    -- Shared
+    is_active       BOOLEAN         NOT NULL DEFAULT TRUE,
+    deleted_at      TIMESTAMPTZ,            -- [FIX-04] soft delete
+    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_org_email UNIQUE (email)
 );
 
-CREATE TYPE shipment_status_enum AS ENUM (
-    'pending',
-    'preparing',
-    'picked_up',
-    'dispatched',
-    'in_transit',
-    'out_for_delivery',
-    'delivered',
-    'failed',
-    'returned',
-    'cancelled'
+CREATE TRIGGER trg_organizations_updated_at
+    BEFORE UPDATE ON organizations
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+-- Partial unique index: email must be unique among non-deleted orgs
+CREATE UNIQUE INDEX uq_org_email_active
+    ON organizations (email)
+    WHERE deleted_at IS NULL;
+
+CREATE INDEX idx_org_type     ON organizations (org_type);
+CREATE INDEX idx_org_active   ON organizations (is_active) WHERE deleted_at IS NULL;
+
+
+-- Roles are scoped per org_type to prevent cross-assignment
+CREATE TABLE roles (
+    id          SERIAL              PRIMARY KEY,
+    name        VARCHAR(100)        NOT NULL,
+    org_type    role_org_type_enum  NOT NULL,
+    description TEXT,
+    permissions JSONB,              -- vendor portal: fine-grained permission map
+    CONSTRAINT uq_role_name_orgtype UNIQUE (name, org_type)
 );
 
-CREATE TYPE invoice_status_enum AS ENUM (
-    'draft',
-    'issued',
-    'partially_paid',
-    'paid',
-    'overdue',
-    'cancelled',
-    'disputed'
+
+CREATE TABLE users (
+    id                      SERIAL          PRIMARY KEY,
+    org_id                  INT             NOT NULL,
+    role_id                 INT             NOT NULL,
+    first_name              VARCHAR(100)    NOT NULL,
+    last_name               VARCHAR(100)    NOT NULL,
+    email                   VARCHAR(255)    NOT NULL,
+    phone                   VARCHAR(20),
+    password_hash           VARCHAR(255)    NOT NULL,
+    is_purchasing_authority BOOLEAN         NOT NULL DEFAULT FALSE,
+    is_active               BOOLEAN         NOT NULL DEFAULT TRUE,
+    last_login              TIMESTAMPTZ,
+    deleted_at              TIMESTAMPTZ,            -- [FIX-04] soft delete
+    created_at              TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_users_org  FOREIGN KEY (org_id)  REFERENCES organizations (id),
+    CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles (id)
+);
+
+CREATE TRIGGER trg_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+-- [FIX-04] Email unique only among non-deleted users
+CREATE UNIQUE INDEX uq_users_email_active
+    ON users (email)
+    WHERE deleted_at IS NULL;
+
+CREATE INDEX idx_users_org_id   ON users (org_id);
+CREATE INDEX idx_users_role_id  ON users (role_id);
+CREATE INDEX idx_users_active   ON users (is_active) WHERE deleted_at IS NULL;
+
+
+CREATE TABLE user_sessions (
+    id                BIGSERIAL       PRIMARY KEY,    -- [FIX-01] BIGINT UNSIGNED → BIGSERIAL
+    user_id           INT             NOT NULL,
+    token_hash        VARCHAR(255)    NOT NULL,
+    ip_address        INET,                           -- [FIX-01] proper INET type
+    user_agent        TEXT,
+    last_activity_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(), -- [FIX-03] inactivity logout
+    expires_at        TIMESTAMPTZ     NOT NULL,
+    created_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT uq_session_token UNIQUE (token_hash)
+);
+
+CREATE INDEX idx_sessions_user_id    ON user_sessions (user_id);
+CREATE INDEX idx_sessions_expires_at ON user_sessions (expires_at);
+
+
+-- [FIX-02] Password reset via OTP or email link (Module 1 – Authentication)
+CREATE TABLE password_reset_tokens (
+    id            BIGSERIAL           PRIMARY KEY,
+    user_id       INT                 NOT NULL,
+    token_hash    VARCHAR(255)        NOT NULL,   -- hashed OTP or signed URL token
+    reset_method  reset_method_enum   NOT NULL,   -- 'otp' | 'email_link'
+    expires_at    TIMESTAMPTZ         NOT NULL,
+    used_at       TIMESTAMPTZ,                    -- NULL = not yet used
+    created_at    TIMESTAMPTZ         NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_prt_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT uq_prt_token UNIQUE (token_hash)
+);
+
+CREATE INDEX idx_prt_user_id   ON password_reset_tokens (user_id);
+CREATE INDEX idx_prt_expires   ON password_reset_tokens (expires_at) WHERE used_at IS NULL;
+
+
+-- Manufacturer-only: business verification
+CREATE TABLE business_verification_certificates (
+    id                  SERIAL              PRIMARY KEY,
+    org_id              INT                 NOT NULL,
+    certificate_number  VARCHAR(255)        NOT NULL,
+    issued_by           VARCHAR(255)        NOT NULL,
+    issued_date         DATE                NOT NULL,
+    expiry_date         DATE,
+    document_url        VARCHAR(500),
+    verification_status verify_status_enum  NOT NULL DEFAULT 'pending',
+    verified_by         INT,
+    verified_at         TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ         NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_bvc_org         FOREIGN KEY (org_id)      REFERENCES organizations (id),
+    CONSTRAINT fk_bvc_verified_by FOREIGN KEY (verified_by) REFERENCES users (id),
+    CONSTRAINT chk_bvc_expiry     CHECK (expiry_date IS NULL OR expiry_date > issued_date)
+);
+
+CREATE INDEX idx_bvc_org_id ON business_verification_certificates (org_id);
+CREATE INDEX idx_bvc_status ON business_verification_certificates (verification_status);
+
+
+-- Manufacturer-only: financial details (store encrypted at application layer)
+CREATE TABLE manufacturer_financial_details (
+    id                          SERIAL          PRIMARY KEY,
+    org_id                      INT             NOT NULL,
+    bank_name                   VARCHAR(255),
+    account_number_encrypted    VARCHAR(500),
+    routing_number_encrypted    VARCHAR(500),
+    tax_id_encrypted            VARCHAR(500),
+    currency                    VARCHAR(10)     NOT NULL DEFAULT 'USD',
+    updated_at                  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_mfd_org        FOREIGN KEY (org_id) REFERENCES organizations (id),
+    CONSTRAINT uq_mfd_org        UNIQUE (org_id)       -- one record per org
+);
+
+CREATE TRIGGER trg_mfd_updated_at
+    BEFORE UPDATE ON manufacturer_financial_details
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+
+-- =============================================================
+-- 3. CONTRACTS (B2B many-to-many bridge)
+-- =============================================================
+
+CREATE TABLE contracts (
+    id                      SERIAL                  PRIMARY KEY,
+    customer_org_id         INT                     NOT NULL,
+    manufacturer_org_id     INT                     NOT NULL,
+    contract_number         VARCHAR(100)            NOT NULL,
+    name                    VARCHAR(255),
+    type                    VARCHAR(30),
+    status                  contract_status_enum    NOT NULL DEFAULT 'draft',
+    start_date              DATE                    NOT NULL,
+    end_date                DATE,
+    renewal_type            VARCHAR(10)             NOT NULL DEFAULT 'manual',
+    signed_by_vendor        BOOLEAN                 NOT NULL DEFAULT FALSE,
+    signed_by_vendor_at     TIMESTAMPTZ,
+    signed_by_buyer         BOOLEAN                 NOT NULL DEFAULT FALSE,
+    signed_by_buyer_at      TIMESTAMPTZ,
+    document_url            VARCHAR(500),
+    terms                   TEXT,
+    created_by              INT                     NOT NULL,
+    approved_by             INT,
+    approved_at             TIMESTAMPTZ,
+    created_at              TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_contracts_customer     FOREIGN KEY (customer_org_id)     REFERENCES organizations (id),
+    CONSTRAINT fk_contracts_manufacturer FOREIGN KEY (manufacturer_org_id) REFERENCES organizations (id),
+    CONSTRAINT fk_contracts_created_by  FOREIGN KEY (created_by)           REFERENCES users (id),
+    CONSTRAINT fk_contracts_approved_by FOREIGN KEY (approved_by)          REFERENCES users (id),
+    CONSTRAINT uq_contract_number       UNIQUE (contract_number),
+    CONSTRAINT chk_contracts_dates      CHECK (end_date IS NULL OR end_date > start_date),
+    CONSTRAINT chk_contracts_diff_orgs  CHECK (customer_org_id <> manufacturer_org_id)
+);
+
+CREATE TRIGGER trg_contracts_updated_at
+    BEFORE UPDATE ON contracts
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+-- [FIX-13] Only one active contract per customer–manufacturer pair
+CREATE UNIQUE INDEX uq_contracts_active_pair
+    ON contracts (customer_org_id, manufacturer_org_id)
+    WHERE status = 'active';
+
+CREATE INDEX idx_contracts_customer     ON contracts (customer_org_id);
+CREATE INDEX idx_contracts_manufacturer ON contracts (manufacturer_org_id);
+CREATE INDEX idx_contracts_status       ON contracts (status);
+
+
+-- =============================================================
+-- 4. MARKETPLACE & DISCOVERY
+-- =============================================================
+
+-- Supports nested categories (self-referencing parent)
+CREATE TABLE product_categories (
+    id          SERIAL          PRIMARY KEY,
+    parent_id   INT,
+    name        VARCHAR(255)    NOT NULL,
+    description TEXT,
+    sort_order  SMALLINT        NOT NULL DEFAULT 0,  -- [FIX-12] UI ordering
+    is_active   BOOLEAN         NOT NULL DEFAULT TRUE,
+    CONSTRAINT fk_categories_parent FOREIGN KEY (parent_id) REFERENCES product_categories (id),
+    CONSTRAINT uq_category_name_parent UNIQUE (name, parent_id)
+);
+
+CREATE INDEX idx_categories_parent   ON product_categories (parent_id);
+CREATE INDEX idx_categories_active   ON product_categories (is_active) WHERE is_active = TRUE;
+
+
+-- No base pricing here — pricing lives in contract_product_pricing
+CREATE TABLE products (
+    id                      SERIAL          PRIMARY KEY,
+    manufacturer_org_id     INT             NOT NULL,
+    category_id             INT             NOT NULL,
+    sku                     VARCHAR(100)    NOT NULL,
+    name                    VARCHAR(255)    NOT NULL,
+    description             TEXT,
+    specifications          JSONB,                      -- [FIX-10] JSONB for indexing
+    unit_of_measure         VARCHAR(50),
+    min_order_quantity      INT             NOT NULL DEFAULT 1 CHECK (min_order_quantity >= 1),
+    lead_time_days          INT             CHECK (lead_time_days >= 0),
+    is_active               BOOLEAN         NOT NULL DEFAULT TRUE,
+    deactivated_at          TIMESTAMPTZ,               -- [FIX-06] deactivation audit timestamp
+    created_at              TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_products_org      FOREIGN KEY (manufacturer_org_id) REFERENCES organizations (id),
+    CONSTRAINT fk_products_category FOREIGN KEY (category_id)         REFERENCES product_categories (id),
+    CONSTRAINT uq_manufacturer_sku  UNIQUE (manufacturer_org_id, sku)
+);
+
+CREATE TRIGGER trg_products_updated_at
+    BEFORE UPDATE ON products
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+CREATE INDEX idx_products_manufacturer ON products (manufacturer_org_id);
+CREATE INDEX idx_products_category     ON products (category_id);
+CREATE INDEX idx_products_active       ON products (is_active) WHERE is_active = TRUE;
+CREATE INDEX idx_products_specs        ON products USING GIN (specifications); -- [FIX-10] GIN on JSONB
+
+
+CREATE TABLE product_tags (
+    id      SERIAL          PRIMARY KEY,
+    name    VARCHAR(100)    NOT NULL,
+    CONSTRAINT uq_tag_name UNIQUE (name)
 );
 
 
-CREATE TYPE payment_method_enum AS ENUM (
-    'bank_transfer',
-    'upi',
-    'credit_card',
-    'cheque'
+CREATE TABLE product_tag_map (
+    product_id  INT NOT NULL,
+    tag_id      INT NOT NULL,
+    PRIMARY KEY (product_id, tag_id),
+    CONSTRAINT fk_ptm_product FOREIGN KEY (product_id) REFERENCES products (id)    ON DELETE CASCADE,
+    CONSTRAINT fk_ptm_tag     FOREIGN KEY (tag_id)     REFERENCES product_tags (id) ON DELETE CASCADE
 );
 
-CREATE TYPE payment_status_enum AS ENUM (
-    'pending',
-    'processing',
-    'completed',
-    'failed',
-    'refunded'
+CREATE INDEX idx_ptm_tag_id ON product_tag_map (tag_id);
+
+
+-- Controls BOTH visibility AND contract-specific pricing per product
+-- A product is only visible to a customer if a row exists here under their contract
+CREATE TABLE contract_product_pricing (
+    id                  SERIAL              PRIMARY KEY,
+    contract_id         INT                 NOT NULL,
+    product_id          INT                 NOT NULL,
+    agreed_unit_price   NUMERIC(12, 4)      NOT NULL CHECK (agreed_unit_price >= 0),
+    currency            VARCHAR(10)         NOT NULL DEFAULT 'USD',
+    discount_percent    NUMERIC(5, 2)       NOT NULL DEFAULT 0.00
+                            CHECK (discount_percent BETWEEN 0 AND 100),
+    max_order_quantity  INT                 CHECK (max_order_quantity > 0),
+    is_active           BOOLEAN             NOT NULL DEFAULT TRUE,
+    effective_from      DATE                NOT NULL,
+    effective_to        DATE,
+    created_at          TIMESTAMPTZ         NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ         NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_cpp_contract  FOREIGN KEY (contract_id) REFERENCES contracts (id),
+    CONSTRAINT fk_cpp_product   FOREIGN KEY (product_id)  REFERENCES products (id),
+    CONSTRAINT uq_contract_product UNIQUE (contract_id, product_id),
+    CONSTRAINT chk_cpp_dates    CHECK (effective_to IS NULL OR effective_to > effective_from)
 );
 
-CREATE TYPE payout_status_enum AS ENUM (
-    'scheduled',
-    'approved',
-    'processing',
-    'completed',
-    'failed',
-    'cancelled'
+CREATE TRIGGER trg_cpp_updated_at
+    BEFORE UPDATE ON contract_product_pricing
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+CREATE INDEX idx_cpp_contract_id ON contract_product_pricing (contract_id);
+CREATE INDEX idx_cpp_product_id  ON contract_product_pricing (product_id);
+CREATE INDEX idx_cpp_active      ON contract_product_pricing (is_active) WHERE is_active = TRUE;
+
+
+-- Manufacturer warehouse / fulfilment locations
+CREATE TABLE supply_chain_logistics (
+    id                      SERIAL          PRIMARY KEY,
+    manufacturer_org_id     INT             NOT NULL,
+    warehouse_name          VARCHAR(255),
+    address                 VARCHAR(500),
+    city                    VARCHAR(100),
+    state                   VARCHAR(100),
+    country                 VARCHAR(100),
+    postal_code             VARCHAR(20),
+    shipping_methods        JSONB,          -- [FIX-10] e.g. ["FedEx","DHL","UPS"]
+    incoterms               VARCHAR(50),
+    is_primary              BOOLEAN         NOT NULL DEFAULT FALSE,
+    created_at              TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_scl_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations (id)
 );
 
-CREATE TYPE ticket_status_enum AS ENUM (
-    'requested',
-    'acknowledged',
-    'investigating',
-    'resolved',
-    'escalated',
-    'closed'
+CREATE INDEX idx_scl_manufacturer ON supply_chain_logistics (manufacturer_org_id);
+
+-- Only one primary warehouse per manufacturer
+CREATE UNIQUE INDEX uq_scl_primary
+    ON supply_chain_logistics (manufacturer_org_id)
+    WHERE is_primary = TRUE;
+
+
+-- =============================================================
+-- 5. ORDER MANAGEMENT
+-- =============================================================
+
+CREATE TABLE orders (
+    id                      SERIAL                  PRIMARY KEY,
+    order_number            VARCHAR(100)            NOT NULL,
+    customer_org_id         INT                     NOT NULL,
+    manufacturer_org_id     INT                     NOT NULL,
+    contract_id             INT                     NOT NULL,
+    created_by              INT                     NOT NULL,
+    approved_by             INT,
+    status                  order_status_enum       NOT NULL DEFAULT 'draft',
+    priority                order_priority_enum     NOT NULL DEFAULT 'normal',
+    total_amount            NUMERIC(16,2)           NOT NULL DEFAULT 0.00,
+    currency                VARCHAR(10)             NOT NULL DEFAULT 'USD',
+    delivery_address        TEXT,
+    required_by_date        DATE,
+    expected_delivery_date  DATE,
+    special_instructions    TEXT,
+    grn_confirmed           BOOLEAN                 NOT NULL DEFAULT FALSE,
+    grn_confirmed_at        TIMESTAMPTZ,
+    grn_confirmed_by        INT,
+    notes                   TEXT,
+    created_at              TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_orders_customer     FOREIGN KEY (customer_org_id)     REFERENCES organizations (id),
+    CONSTRAINT fk_orders_manufacturer FOREIGN KEY (manufacturer_org_id) REFERENCES organizations (id),
+    CONSTRAINT fk_orders_contract     FOREIGN KEY (contract_id)          REFERENCES contracts (id),
+    CONSTRAINT fk_orders_created_by   FOREIGN KEY (created_by)           REFERENCES users (id),
+    CONSTRAINT fk_orders_approved_by  FOREIGN KEY (approved_by)          REFERENCES users (id),
+    CONSTRAINT fk_orders_grn_by       FOREIGN KEY (grn_confirmed_by)     REFERENCES users (id),
+    CONSTRAINT uq_order_number        UNIQUE (order_number)
 );
 
-CREATE TYPE refund_status_enum AS ENUM (
-    'initiated',
-    'approved',
-    'processing',
-    'completed',
-    'rejected'
+CREATE TRIGGER trg_orders_updated_at
+    BEFORE UPDATE ON orders
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+CREATE INDEX idx_orders_customer     ON orders (customer_org_id);
+CREATE INDEX idx_orders_manufacturer ON orders (manufacturer_org_id);
+CREATE INDEX idx_orders_contract     ON orders (contract_id);
+CREATE INDEX idx_orders_status       ON orders (status);
+CREATE INDEX idx_orders_created_at   ON orders (created_at DESC);
+
+
+CREATE TABLE order_items (
+    id                  SERIAL              PRIMARY KEY,
+    order_id            INT                 NOT NULL,
+    product_id          INT                 NOT NULL,
+    contract_pricing_id INT                 NOT NULL,  -- locks price at order time
+    quantity            INT                 NOT NULL CHECK (quantity > 0),
+    shipped_qty         NUMERIC(12,3)       NOT NULL DEFAULT 0,  -- vendor: partial shipment tracking
+    unit                VARCHAR(50),
+    unit_price          NUMERIC(12, 4)      NOT NULL CHECK (unit_price >= 0), -- snapshot price
+    gst_percentage      NUMERIC(5,2)        NOT NULL DEFAULT 0.00,
+    notes               TEXT,
+    CONSTRAINT fk_oi_order           FOREIGN KEY (order_id)            REFERENCES orders (id)                   ON DELETE CASCADE,
+    CONSTRAINT fk_oi_product         FOREIGN KEY (product_id)          REFERENCES products (id),
+    CONSTRAINT fk_oi_contract_pricing FOREIGN KEY (contract_pricing_id) REFERENCES contract_product_pricing (id)
 );
 
-CREATE TYPE rfq_status_enum AS ENUM (
-    'draft',
-    'active',
-    'extended',
-    'closed',
-    'cancelled'
+-- [FIX-01] PostgreSQL does not support GENERATED ALWAYS AS with cross-table refs;
+--           total_price is computed in application layer or via a view.
+CREATE VIEW v_order_items_with_total AS
+    SELECT
+        oi.*,
+        (oi.quantity * oi.unit_price)::NUMERIC(14,4) AS total_price
+    FROM order_items oi;
+
+CREATE INDEX idx_oi_order_id   ON order_items (order_id);
+CREATE INDEX idx_oi_product_id ON order_items (product_id);
+
+
+CREATE TABLE order_status_history (
+    id              BIGSERIAL       PRIMARY KEY,
+    order_id        INT             NOT NULL,
+    changed_by      INT             NOT NULL,
+    previous_status VARCHAR(50),
+    new_status      VARCHAR(50)     NOT NULL,
+    note            TEXT,
+    changed_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_osh_order      FOREIGN KEY (order_id)   REFERENCES orders (id) ON DELETE CASCADE,
+    CONSTRAINT fk_osh_changed_by FOREIGN KEY (changed_by) REFERENCES users (id)
 );
 
-CREATE TYPE contract_status_enum AS ENUM (
-    'draft',
-    'active',
-    'suspended',
-    'expired',
-    'terminated'
+CREATE INDEX idx_osh_order_id   ON order_status_history (order_id);
+CREATE INDEX idx_osh_changed_at ON order_status_history (changed_at DESC);
+
+
+-- =============================================================
+-- 6. TRANSACTION & FINANCIAL TOOLS
+-- =============================================================
+
+CREATE TABLE payment_profiles (
+    id                  SERIAL                  PRIMARY KEY,
+    customer_org_id     INT                     NOT NULL,
+    profile_name        VARCHAR(255)            NOT NULL,
+    payment_method      payment_method_enum     NOT NULL,
+    is_default          BOOLEAN                 NOT NULL DEFAULT FALSE,
+    details_encrypted   JSONB,                  -- [FIX-10]
+    billing_address     TEXT,
+    is_active           BOOLEAN                 NOT NULL DEFAULT TRUE,
+    created_at          TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_pp_org FOREIGN KEY (customer_org_id) REFERENCES organizations (id)
 );
 
--- ============================================================
--- MODULE 0 — AUDIT LOG (SHARED)
--- ============================================================
+CREATE INDEX idx_pp_customer ON payment_profiles (customer_org_id);
 
-CREATE TABLE audit_logs (
-    id BIGSERIAL PRIMARY KEY,
-    entity_type VARCHAR(50) NOT NULL,
-    entity_id INT NOT NULL,
-    action VARCHAR(30) NOT NULL,
-    old_values JSONB NULL,
-    new_values JSONB NULL,
-    changed_by INT NULL,
-    changed_by_org INT NULL,
-    ip_address INET NULL,
-    user_agent VARCHAR(512) NULL,
-    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- Only one default payment profile per customer
+CREATE UNIQUE INDEX uq_pp_default
+    ON payment_profiles (customer_org_id)
+    WHERE is_default = TRUE AND is_active = TRUE;
+
+
+CREATE TABLE invoices (
+    id                  SERIAL                  PRIMARY KEY,
+    invoice_number      VARCHAR(100)            NOT NULL,
+    order_id            INT                     NOT NULL,
+    issued_by_org_id    INT                     NOT NULL,
+    billed_to_org_id    INT                     NOT NULL,
+    subtotal            NUMERIC(14, 4)          NOT NULL CHECK (subtotal >= 0),
+    tax_amount          NUMERIC(14, 4)          NOT NULL DEFAULT 0.0000 CHECK (tax_amount >= 0),
+    discount_amount     NUMERIC(14, 4)          NOT NULL DEFAULT 0.0000 CHECK (discount_amount >= 0),
+    total_amount        NUMERIC(14, 4)          NOT NULL CHECK (total_amount >= 0),
+    currency            VARCHAR(10)             NOT NULL DEFAULT 'USD',
+    status              invoice_status_enum     NOT NULL DEFAULT 'draft',
+    issue_date          DATE                    NOT NULL,
+    due_date            DATE                    NOT NULL,
+    document_url        VARCHAR(500),
+    notes               TEXT,
+    created_at          TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_inv_order          FOREIGN KEY (order_id)          REFERENCES orders (id),
+    CONSTRAINT fk_inv_issued_by      FOREIGN KEY (issued_by_org_id)  REFERENCES organizations (id),
+    CONSTRAINT fk_inv_billed_to      FOREIGN KEY (billed_to_org_id)  REFERENCES organizations (id),
+    CONSTRAINT uq_invoice_number     UNIQUE (invoice_number),
+    CONSTRAINT chk_inv_due_date      CHECK (due_date >= issue_date),
+    CONSTRAINT chk_inv_total         CHECK (total_amount = subtotal + tax_amount - discount_amount)
 );
 
-CREATE INDEX idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
-CREATE INDEX idx_audit_logs_changed_at ON audit_logs(changed_at DESC);
-CREATE INDEX idx_audit_logs_changed_by ON audit_logs(changed_by);
+CREATE TRIGGER trg_invoices_updated_at
+    BEFORE UPDATE ON invoices
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 
-COMMENT ON TABLE audit_logs IS 'Global audit trail for all system changes across both portals';
+CREATE INDEX idx_inv_order_id      ON invoices (order_id);
+CREATE INDEX idx_inv_billed_to     ON invoices (billed_to_org_id);
+CREATE INDEX idx_inv_status        ON invoices (status);
+CREATE INDEX idx_inv_due_date      ON invoices (due_date) WHERE status NOT IN ('paid','cancelled');
 
--- ============================================================
--- MODULE 1 — AUTH & IDENTITY (SHARED)
--- ============================================================
+
+CREATE TABLE payments (
+    id                    SERIAL                  PRIMARY KEY,
+    invoice_id            INT                     NOT NULL,
+    payment_profile_id    INT,
+    transaction_reference VARCHAR(255),
+    amount                NUMERIC(14, 4)          NOT NULL CHECK (amount > 0),
+    currency              VARCHAR(10)             NOT NULL DEFAULT 'USD',
+    payment_method        payment_method_enum     NOT NULL,
+    status                payment_status_enum     NOT NULL DEFAULT 'pending',
+    payment_date          TIMESTAMPTZ,
+    notes                 TEXT,
+    created_at            TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_pay_invoice  FOREIGN KEY (invoice_id)         REFERENCES invoices (id),
+    CONSTRAINT fk_pay_profile  FOREIGN KEY (payment_profile_id) REFERENCES payment_profiles (id),
+    CONSTRAINT uq_pay_tx_ref   UNIQUE (transaction_reference)
+);
+
+CREATE INDEX idx_pay_invoice_id ON payments (invoice_id);
+CREATE INDEX idx_pay_status     ON payments (status);
+
+
+-- =============================================================
+-- 7. SHIPMENT & DELIVERY TRACKING
+-- =============================================================
+
+CREATE TABLE shipments (
+    id                      SERIAL                  PRIMARY KEY,
+    shipment_number         VARCHAR(100)            NOT NULL,
+    order_id                INT                     NOT NULL,
+    manufacturer_org_id     INT,                    -- vendor portal: direct FK for performance
+    customer_org_id         INT,                    -- vendor portal: direct FK for performance
+    is_partial              BOOLEAN                 NOT NULL DEFAULT FALSE,
+    origin_logistics_id     INT,
+    carrier                 VARCHAR(255),
+    tracking_number         VARCHAR(255),
+    tracking_url            VARCHAR(500),
+    service_type            VARCHAR(100),
+    incoterm                VARCHAR(50),
+    status                  shipment_status_enum    NOT NULL DEFAULT 'pending',
+    dispatched_by           INT,                    -- [FIX-05] user who marked as shipped
+    shipped_at              TIMESTAMPTZ,            -- actual dispatch date/time
+    estimated_delivery_date DATE,
+    actual_delivery_date    DATE,
+    vehicle_number          VARCHAR(50),
+    eway_bill_number        VARCHAR(100),           -- Indian e-way bill compliance
+    number_of_packages      INT,
+    received_by             INT,                    -- user who confirmed receipt
+    weight_kg               NUMERIC(8, 2)           CHECK (weight_kg > 0),
+    dimensions_cm           VARCHAR(100),
+    notes                   TEXT,
+    created_at              TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_ship_order          FOREIGN KEY (order_id)            REFERENCES orders (id),
+    CONSTRAINT fk_ship_logistics      FOREIGN KEY (origin_logistics_id) REFERENCES supply_chain_logistics (id),
+    CONSTRAINT fk_ship_dispatched_by  FOREIGN KEY (dispatched_by)       REFERENCES users (id),
+    CONSTRAINT fk_ship_received_by    FOREIGN KEY (received_by)         REFERENCES users (id),
+    CONSTRAINT fk_ship_manufacturer   FOREIGN KEY (manufacturer_org_id) REFERENCES organizations (id),
+    CONSTRAINT fk_ship_customer       FOREIGN KEY (customer_org_id)     REFERENCES organizations (id),
+    CONSTRAINT uq_shipment_number     UNIQUE (shipment_number)
+);
+
+CREATE TRIGGER trg_shipments_updated_at
+    BEFORE UPDATE ON shipments
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+CREATE INDEX idx_ship_order_id  ON shipments (order_id);
+CREATE INDEX idx_ship_status    ON shipments (status);
+CREATE INDEX idx_ship_carrier   ON shipments (carrier);
+
+
+CREATE TABLE shipment_events (
+    id              BIGSERIAL           PRIMARY KEY,
+    shipment_id     INT                 NOT NULL,
+    event_type      VARCHAR(100)        NOT NULL,
+    location        VARCHAR(255),
+    description     TEXT,
+    event_timestamp TIMESTAMPTZ         NOT NULL,
+    source          event_source_enum   NOT NULL DEFAULT 'system',
+    created_at      TIMESTAMPTZ         NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_se_shipment FOREIGN KEY (shipment_id) REFERENCES shipments (id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_se_shipment_id     ON shipment_events (shipment_id);
+CREATE INDEX idx_se_event_timestamp ON shipment_events (event_timestamp DESC);
+
+
+CREATE TABLE delivery_confirmations (
+    id                      SERIAL          PRIMARY KEY,
+    shipment_id             INT             NOT NULL,
+    confirmed_by            INT             NOT NULL,  -- seller or receiver user_id
+    signature_url           VARCHAR(500),
+    proof_of_delivery_url   VARCHAR(500),
+    notes                   TEXT,
+    confirmed_at            TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_dc_shipment     FOREIGN KEY (shipment_id)  REFERENCES shipments (id),
+    CONSTRAINT fk_dc_confirmed_by FOREIGN KEY (confirmed_by) REFERENCES users (id),
+    CONSTRAINT uq_dc_shipment     UNIQUE (shipment_id)       -- one confirmation per shipment
+);
+
+CREATE INDEX idx_dc_shipment_id ON delivery_confirmations (shipment_id);
+
+
+-- =============================================================
+-- 8. SUPPORT & COMPLAINT RESOLUTION
+-- =============================================================
+
+CREATE TABLE support_tickets (
+    id                      SERIAL                  PRIMARY KEY,
+    ticket_number           VARCHAR(100)            NOT NULL,
+    raised_by_user_id       INT                     NOT NULL,
+    raised_by_org_id        INT                     NOT NULL,
+    assigned_to_user_id     INT,
+    related_order_id        INT,
+    related_shipment_id     INT,
+    related_invoice_id      INT,
+    category                ticket_cat_enum         NOT NULL,
+    priority                priority_enum           NOT NULL DEFAULT 'medium',
+    subject                 VARCHAR(500)            NOT NULL,
+    description             TEXT                    NOT NULL,
+    status                  ticket_status_enum      NOT NULL DEFAULT 'open',
+    dispute_id              INT,                    -- set when ticket escalates to formal dispute (vendor portal)
+    resolved_at             TIMESTAMPTZ,
+    resolution_notes        TEXT,
+    created_at              TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_st_raised_by_user  FOREIGN KEY (raised_by_user_id)    REFERENCES users (id),
+    CONSTRAINT fk_st_raised_by_org   FOREIGN KEY (raised_by_org_id)     REFERENCES organizations (id),
+    CONSTRAINT fk_st_assigned_to     FOREIGN KEY (assigned_to_user_id)  REFERENCES users (id),
+    CONSTRAINT fk_st_order           FOREIGN KEY (related_order_id)     REFERENCES orders (id),
+    CONSTRAINT fk_st_shipment        FOREIGN KEY (related_shipment_id)  REFERENCES shipments (id),
+    CONSTRAINT fk_st_invoice         FOREIGN KEY (related_invoice_id)   REFERENCES invoices (id),
+    CONSTRAINT uq_ticket_number      UNIQUE (ticket_number)
+);
+
+CREATE TRIGGER trg_tickets_updated_at
+    BEFORE UPDATE ON support_tickets
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+CREATE INDEX idx_st_raised_by_user ON support_tickets (raised_by_user_id);
+CREATE INDEX idx_st_raised_by_org  ON support_tickets (raised_by_org_id);
+CREATE INDEX idx_st_assigned_to    ON support_tickets (assigned_to_user_id);
+CREATE INDEX idx_st_status         ON support_tickets (status);
+CREATE INDEX idx_st_category       ON support_tickets (category);
+CREATE INDEX idx_st_priority       ON support_tickets (priority);
+
+
+CREATE TABLE ticket_messages (
+    id                  BIGSERIAL       PRIMARY KEY,
+    ticket_id           INT             NOT NULL,
+    sent_by_user_id     INT             NOT NULL,
+    reply_to_message_id BIGINT,                     -- [FIX-09] buyer reply threading
+    message             TEXT            NOT NULL,
+    attachments         JSONB,                      -- [FIX-10] array of file URLs
+    is_internal_note    BOOLEAN         NOT NULL DEFAULT FALSE, -- hidden from buyers
+    created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_tm_ticket          FOREIGN KEY (ticket_id)           REFERENCES support_tickets (id) ON DELETE CASCADE,
+    CONSTRAINT fk_tm_sent_by         FOREIGN KEY (sent_by_user_id)     REFERENCES users (id),
+    CONSTRAINT fk_tm_reply_to        FOREIGN KEY (reply_to_message_id) REFERENCES ticket_messages (id)
+);
+
+CREATE INDEX idx_tm_ticket_id    ON ticket_messages (ticket_id);
+CREATE INDEX idx_tm_sent_by      ON ticket_messages (sent_by_user_id);
+CREATE INDEX idx_tm_internal     ON ticket_messages (ticket_id) WHERE is_internal_note = FALSE;
+
+
+CREATE TABLE ticket_status_history (
+    id              BIGSERIAL       PRIMARY KEY,
+    ticket_id       INT             NOT NULL,
+    changed_by      INT             NOT NULL,
+    previous_status VARCHAR(50),
+    new_status      VARCHAR(50)     NOT NULL,
+    note            TEXT,
+    changed_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_tsh_ticket     FOREIGN KEY (ticket_id)   REFERENCES support_tickets (id) ON DELETE CASCADE,
+    CONSTRAINT fk_tsh_changed_by FOREIGN KEY (changed_by)  REFERENCES users (id)
+);
+
+CREATE INDEX idx_tsh_ticket_id  ON ticket_status_history (ticket_id);
+CREATE INDEX idx_tsh_changed_at ON ticket_status_history (changed_at DESC);
+
+
+-- =============================================================
+-- 9. ANALYSIS DASHBOARD  (Module 4)
+-- =============================================================
+-- [FIX-07] The original schema had no Analysis Dashboard backing store.
+--          Live KPIs are derived via the views below.
+--          dashboard_snapshots caches daily aggregates for fast loading.
+
+-- Daily pre-aggregated snapshot (populated by a scheduled job / pg_cron)
+CREATE TABLE dashboard_snapshots (
+    id                          BIGSERIAL       PRIMARY KEY,
+    manufacturer_org_id         INT             NOT NULL,
+    snapshot_date               DATE            NOT NULL,
+    -- Sales & Orders
+    total_orders                INT             NOT NULL DEFAULT 0,
+    orders_confirmed            INT             NOT NULL DEFAULT 0,
+    orders_processing           INT             NOT NULL DEFAULT 0,
+    orders_shipped              INT             NOT NULL DEFAULT 0,
+    orders_delivered            INT             NOT NULL DEFAULT 0,
+    orders_cancelled            INT             NOT NULL DEFAULT 0,
+    gross_sales_amount          NUMERIC(16, 4)  NOT NULL DEFAULT 0,
+    -- Operational
+    avg_dispatch_hours          NUMERIC(8, 2),  -- avg time from confirmed to shipped
+    fulfilment_rate_pct         NUMERIC(5, 2),  -- delivered / (delivered + cancelled + failed)
+    open_support_tickets        INT             NOT NULL DEFAULT 0,
+    created_at                  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_ds_org            FOREIGN KEY (manufacturer_org_id) REFERENCES organizations (id),
+    CONSTRAINT uq_ds_org_date       UNIQUE (manufacturer_org_id, snapshot_date)
+);
+
+CREATE INDEX idx_ds_org_date ON dashboard_snapshots (manufacturer_org_id, snapshot_date DESC);
+
+
+-- Live view: monthly sales trend per manufacturer (feeds trend chart)
+CREATE VIEW v_monthly_sales_trend AS
+SELECT
+    o.manufacturer_org_id,
+    DATE_TRUNC('month', o.created_at)::DATE     AS month,
+    COUNT(o.id)                                 AS order_count,
+    SUM(oi.quantity * oi.unit_price)            AS gross_sales
+FROM orders o
+JOIN order_items oi ON oi.order_id = o.id
+WHERE o.status NOT IN ('cancelled', 'disputed')
+GROUP BY o.manufacturer_org_id, DATE_TRUNC('month', o.created_at);
+
+
+-- Live view: top 10 products by revenue per manufacturer
+CREATE VIEW v_top_products AS
+SELECT
+    p.manufacturer_org_id,
+    p.id                                        AS product_id,
+    p.name                                      AS product_name,
+    p.sku,
+    SUM(oi.quantity)                            AS units_sold,
+    SUM(oi.quantity * oi.unit_price)            AS total_revenue
+FROM order_items oi
+JOIN products p ON p.id = oi.product_id
+JOIN orders   o ON o.id = oi.order_id
+WHERE o.status NOT IN ('cancelled', 'disputed')
+GROUP BY p.manufacturer_org_id, p.id, p.name, p.sku;
+
+
+-- Live view: dispatch timeline (confirmed → shipped lag)
+CREATE VIEW v_dispatch_timeline AS
+SELECT
+    o.manufacturer_org_id,
+    o.id                                                    AS order_id,
+    o.order_number,
+    MIN(CASE WHEN osh.new_status = 'confirmed' THEN osh.changed_at END) AS confirmed_at,
+    MIN(CASE WHEN osh.new_status = 'shipped'   THEN osh.changed_at END) AS shipped_at,
+    EXTRACT(EPOCH FROM (
+        MIN(CASE WHEN osh.new_status = 'shipped'   THEN osh.changed_at END)
+      - MIN(CASE WHEN osh.new_status = 'confirmed' THEN osh.changed_at END)
+    )) / 3600                                               AS dispatch_hours
+FROM orders o
+JOIN order_status_history osh ON osh.order_id = o.id
+GROUP BY o.manufacturer_org_id, o.id, o.order_number;
+
+
+-- =============================================================
+-- 10. CRM (out-of-scope for requirements — retained for reference)
+-- NOTE: These tables are NOT referenced in Requirements_Document.docx.
+--       Module 4 in requirements is "Analysis Dashboard", not CRM.
+--       Retain only if a separate CRM feature is planned.
+-- =============================================================
+
+CREATE TABLE crm_interactions (
+    id                      SERIAL                  PRIMARY KEY,
+    org_id                  INT                     NOT NULL,
+    performed_by_user_id    INT                     NOT NULL,
+    interaction_type        crm_interaction_enum    NOT NULL,
+    subject                 VARCHAR(500),
+    summary                 TEXT,
+    outcome                 TEXT,
+    related_contract_id     INT,
+    related_order_id        INT,
+    interaction_date        TIMESTAMPTZ             NOT NULL,
+    created_at              TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_ci_org          FOREIGN KEY (org_id)               REFERENCES organizations (id),
+    CONSTRAINT fk_ci_performed_by FOREIGN KEY (performed_by_user_id) REFERENCES users (id),
+    CONSTRAINT fk_ci_contract     FOREIGN KEY (related_contract_id)  REFERENCES contracts (id),
+    CONSTRAINT fk_ci_order        FOREIGN KEY (related_order_id)     REFERENCES orders (id)
+);
+
+CREATE INDEX idx_ci_org_id           ON crm_interactions (org_id);
+CREATE INDEX idx_ci_interaction_date ON crm_interactions (interaction_date DESC);
+
+
+CREATE TABLE crm_tasks (
+    id                      SERIAL                  PRIMARY KEY,
+    org_id                  INT                     NOT NULL,
+    assigned_to_user_id     INT                     NOT NULL,
+    created_by_user_id      INT                     NOT NULL,
+    title                   VARCHAR(500)            NOT NULL,
+    description             TEXT,
+    task_type               crm_task_type_enum      NOT NULL DEFAULT 'other',
+    priority                priority_enum           NOT NULL DEFAULT 'medium',
+    status                  crm_task_status_enum    NOT NULL DEFAULT 'pending',
+    due_date                DATE,
+    completed_at            TIMESTAMPTZ,
+    related_contract_id     INT,
+    created_at              TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_ct_org          FOREIGN KEY (org_id)               REFERENCES organizations (id),
+    CONSTRAINT fk_ct_assigned_to  FOREIGN KEY (assigned_to_user_id)  REFERENCES users (id),
+    CONSTRAINT fk_ct_created_by   FOREIGN KEY (created_by_user_id)   REFERENCES users (id),
+    CONSTRAINT fk_ct_contract     FOREIGN KEY (related_contract_id)  REFERENCES contracts (id)
+);
+
+CREATE TRIGGER trg_crm_tasks_updated_at
+    BEFORE UPDATE ON crm_tasks
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+CREATE INDEX idx_ct_org_id       ON crm_tasks (org_id);
+CREATE INDEX idx_ct_assigned_to  ON crm_tasks (assigned_to_user_id);
+CREATE INDEX idx_ct_status       ON crm_tasks (status);
+
+
+CREATE TABLE crm_notes (
+    id                  SERIAL          PRIMARY KEY,
+    org_id              INT             NOT NULL,
+    created_by_user_id  INT             NOT NULL,
+    note                TEXT            NOT NULL,
+    is_pinned           BOOLEAN         NOT NULL DEFAULT FALSE,
+    created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_cn_org        FOREIGN KEY (org_id)              REFERENCES organizations (id),
+    CONSTRAINT fk_cn_created_by FOREIGN KEY (created_by_user_id)  REFERENCES users (id)
+);
+
+CREATE TRIGGER trg_crm_notes_updated_at
+    BEFORE UPDATE ON crm_notes
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+CREATE INDEX idx_cn_org_id   ON crm_notes (org_id);
+CREATE INDEX idx_cn_is_pinned ON crm_notes (org_id) WHERE is_pinned = TRUE;
+
+
+-- =============================================================
+-- 11. VENDOR PORTAL — PLATFORM ADMINISTRATION
+-- Tables below are owned by the Vendor Portal team.
+-- Customer Portal reads shared tables only; does not write here.
+-- =============================================================
 
 CREATE TABLE admins (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(150) NOT NULL,
-    email VARCHAR(150) NOT NULL,
-    role VARCHAR(50) NOT NULL DEFAULT 'admin',
-    access_level SMALLINT NOT NULL DEFAULT 1,
-    password_hash VARCHAR(255) NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'active',
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    last_login_at TIMESTAMPTZ NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT uq_admins_email UNIQUE (email),
+    id              SERIAL          PRIMARY KEY,
+    name            VARCHAR(150)    NOT NULL,
+    email           VARCHAR(150)    NOT NULL,
+    role            VARCHAR(50)     NOT NULL DEFAULT 'admin',
+    access_level    SMALLINT        NOT NULL DEFAULT 1,
+    password_hash   VARCHAR(255)    NOT NULL,
+    status          VARCHAR(20)     NOT NULL DEFAULT 'active',
+    is_active       BOOLEAN         NOT NULL DEFAULT TRUE,
+    last_login_at   TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    deleted_at      TIMESTAMPTZ,
+    CONSTRAINT uq_admins_email  UNIQUE (email),
     CONSTRAINT chk_admin_status CHECK (status IN ('active', 'suspended'))
 );
 
-CREATE INDEX idx_admins_status ON admins(status);
-CREATE INDEX idx_admins_is_active ON admins(is_active);
+CREATE TRIGGER trg_admins_updated_at
+    BEFORE UPDATE ON admins
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 
-COMMENT ON TABLE admins IS 'Platform super-admin accounts; separate from org users';
+CREATE INDEX idx_admins_status    ON admins (status);
+CREATE INDEX idx_admins_is_active ON admins (is_active);
 
--- ============================================================
--- ORGANIZATIONS (CORE SHARED TABLE)
--- Both portals use this unified table. org_type disambiguates roles.
--- ============================================================
 
-CREATE TABLE organizations (
-    id SERIAL PRIMARY KEY,
-    org_type org_type_enum NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(150) NOT NULL,
-    phone VARCHAR(20) NULL,
-    password_hash VARCHAR(255) NULL,
+-- =============================================================
+-- 12. VENDOR PORTAL — AUDIT LOG
+-- =============================================================
 
-    -- Address
-    address_line1 VARCHAR(255) NULL,
-    address_line2 VARCHAR(255) NULL,
-    city VARCHAR(100) NULL,
-    state VARCHAR(100) NULL,
-    pincode VARCHAR(20) NULL,
-    country VARCHAR(100) NOT NULL DEFAULT 'India',
-
-    -- Tax / identity
-
-    -- Profile
-    contact_name VARCHAR(150) NULL,
-    contact_email VARCHAR(150) NULL,
-    contact_phone VARCHAR(20) NULL,
-    logo_url VARCHAR(500) NULL,
-    website VARCHAR(255) NULL,
-    about TEXT NULL,
-    industry_type VARCHAR(100) NULL,
-
-    -- Vendor-specific fields (NULL for non-vendor orgs)
-    factory_address TEXT NULL,
-    authorised_signatory_name VARCHAR(255) NULL,
-    authorised_signatory_phone VARCHAR(20) NULL,
-    overall_rating NUMERIC(3,2) NULL,
-
-    -- Verification lifecycle
-    verification_status
-
-    is_active BOOLEAN NOT NULL DEFAULT FALSE,
-    last_login_at TIMESTAMPTZ NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT uq_orgs_email UNIQUE (email),
+CREATE TABLE audit_logs (
+    id              BIGSERIAL       PRIMARY KEY,
+    entity_type     VARCHAR(50)     NOT NULL,
+    entity_id       INT             NOT NULL,
+    action          VARCHAR(30)     NOT NULL,
+    old_values      JSONB,
+    new_values      JSONB,
+    changed_by      INT,
+    changed_by_org  INT,
+    ip_address      INET,
+    user_agent      VARCHAR(512),
+    changed_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_orgs_org_type ON organizations(org_type);
-
-CREATE INDEX idx_orgs_is_active ON organizations(is_active);
-CREATE INDEX idx_orgs_deleted_at ON organizations(deleted_at);
-
-COMMENT ON TABLE organizations IS 'Unified organizations: org_type disambiguates (manufacturer/customer/admin)';
-COMMENT ON COLUMN organizations.org_type IS 'manufacturer=seller (vendor portal), customer=buyer (customer portal)';
-
--- ============================================================
--- ROLES (CORE SHARED TABLE)
--- Scoped to org_type. Same pool for both portals.
--- ============================================================
-
-CREATE TABLE roles (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    org_type org_type_enum NOT NULL,
-    description TEXT NULL,
-    permissions JSONB NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT uq_roles_name_org_type UNIQUE (name, org_type)
-);
-
-COMMENT ON TABLE roles IS 'Role definitions scoped to org_type; shared RBAC pool';
-
--- Sample role data (insert after table creation)
-INSERT INTO roles (name, org_type, description) VALUES
-    ('admin', 'manufacturer', 'Full access to manufacturing operations'),
-    ('procurement', 'manufacturer', 'Raise RFQs, approve POs, manage orders'),
-    ('accounts', 'manufacturer', 'Invoice and payment access'),
-    ('dispatch', 'manufacturer', 'Shipment and GRN management'),
-    ('viewer', 'manufacturer', 'Read-only access'),
-    ('admin', 'customer', 'Full access to purchasing operations'),
-    ('sales', 'customer', 'Manage quotes and supplier orders'),
-    ('accounts', 'customer', 'Invoice and settlement access'),
-    ('dispatch', 'customer', 'Inbound shipment management'),
-    ('inventory', 'customer', 'Warehouse and stock management'),
-    ('viewer', 'customer', 'Read-only access'),
-    ('super_admin', 'admin', 'Full platform access'),
-    ('admin', 'admin', 'Standard platform admin');
-
--- ============================================================
--- USERS (CORE SHARED TABLE)
--- One users table for both portals. org_id + role_id = context.
--- ============================================================
-
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    org_id INT NOT NULL,
-    role_id INT NOT NULL,
-    first_name VARCHAR(100) NOT NULL,
-    last_name VARCHAR(100) NOT NULL,
-    email VARCHAR(150) NOT NULL,
-    phone VARCHAR(20) NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    is_purchasing_authority BOOLEAN NOT NULL DEFAULT FALSE,
-    last_login TIMESTAMPTZ NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT uq_users_email UNIQUE (email),
-    CONSTRAINT fk_users_org_id FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_users_role_id FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE RESTRICT
-);
-
-CREATE INDEX idx_users_org_id ON users(org_id);
-CREATE INDEX idx_users_role_id ON users(role_id);
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_is_active ON users(is_active);
-
-COMMENT ON TABLE users IS 'Unified users for both portals; org_id + role_id defines context';
-
--- ============================================================
--- USER SESSIONS (SHARED)
--- Renamed from sessions; tracks all login activity.
--- ============================================================
-
-CREATE TABLE user_sessions (
-    id BIGSERIAL PRIMARY KEY,
-    user_id INT NOT NULL,
-    token_hash VARCHAR(255) NOT NULL,
-    ip_address INET NULL,
-    user_agent VARCHAR(512) NULL,
-    last_activity_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT uq_user_sessions_token UNIQUE (token_hash),
-    CONSTRAINT fk_user_sessions_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_user_sessions_user_id ON user_sessions(user_id);
-CREATE INDEX idx_user_sessions_expires_at ON user_sessions(expires_at);
+CREATE INDEX idx_audit_entity     ON audit_logs (entity_type, entity_id);
+CREATE INDEX idx_audit_changed_at ON audit_logs (changed_at DESC);
+CREATE INDEX idx_audit_changed_by ON audit_logs (changed_by);
 
 
-COMMENT ON TABLE user_sessions IS 'Session management for both portals; replaces old sessions table';
-
--- ============================================================
--- PASSWORD RESET TOKENS (SHARED)
--- Renamed from password_resets; unified reset flow.
--- ============================================================
-
-CREATE TABLE password_reset_tokens (
-    id BIGSERIAL PRIMARY KEY,
-    user_id INT NOT NULL,
-    token_hash VARCHAR(255) NOT NULL,
-    reset_method VARCHAR(20) NOT NULL DEFAULT 'email_link',
-    channel VARCHAR(10) NOT NULL DEFAULT 'email',
-    expires_at TIMESTAMPTZ NOT NULL,
-    used_at TIMESTAMPTZ NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT uq_prt_token UNIQUE (token_hash),
-    CONSTRAINT fk_prt_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_prt_user_id ON password_reset_tokens(user_id);
-CREATE INDEX idx_prt_expires_at ON password_reset_tokens(expires_at);
-
-COMMENT ON TABLE password_reset_tokens IS 'Password reset tokens; unified for both portals';
-
--- ============================================================
--- MODULE 2 — DOCUMENTS (SHARED)
--- Verification docs for organizations; typed by document_type.
--- ============================================================
+-- =============================================================
+-- 13. VENDOR PORTAL — DOCUMENTS (KYC / VERIFICATION)
+-- =============================================================
 
 CREATE TABLE documents (
-    id SERIAL PRIMARY KEY,
-    org_id INT NOT NULL,
-    document_type VARCHAR(50) NOT NULL,
-    document_name VARCHAR(255) NOT NULL,
-    file_url VARCHAR(500) NOT NULL,
-    verify_status verify_status_enum NOT NULL DEFAULT 'pending',
-    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
-    verified_by INT NULL,
-    verified_at TIMESTAMPTZ NULL,
-    uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT fk_documents_org_id FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE,
-    CONSTRAINT fk_documents_verified_by FOREIGN KEY (verified_by) REFERENCES admins(id) ON DELETE SET NULL
+    id              SERIAL                  PRIMARY KEY,
+    org_id          INT                     NOT NULL,
+    document_type   VARCHAR(50)             NOT NULL,
+    document_name   VARCHAR(255)            NOT NULL,
+    file_url        VARCHAR(500)            NOT NULL,
+    verify_status   verify_status_enum      NOT NULL DEFAULT 'pending',
+    is_verified     BOOLEAN                 NOT NULL DEFAULT FALSE,
+    verified_by     INT,
+    verified_at     TIMESTAMPTZ,
+    uploaded_at     TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    deleted_at      TIMESTAMPTZ,
+    CONSTRAINT fk_docs_org         FOREIGN KEY (org_id)      REFERENCES organizations (id) ON DELETE CASCADE,
+    CONSTRAINT fk_docs_verified_by FOREIGN KEY (verified_by) REFERENCES admins (id)        ON DELETE SET NULL
 );
 
-CREATE INDEX idx_documents_org_id ON documents(org_id);
-CREATE INDEX idx_documents_document_type ON documents(document_type);
-CREATE INDEX idx_documents_is_verified ON documents(is_verified);
+CREATE INDEX idx_docs_org_id   ON documents (org_id);
+CREATE INDEX idx_docs_type     ON documents (document_type);
+CREATE INDEX idx_docs_verified ON documents (is_verified);
 
-COMMENT ON TABLE documents IS 'Verification documents for organizations; shared across portals';
 
--- ============================================================
--- MODULE 3 — VENDOR BANKING
--- ============================================================
+-- =============================================================
+-- 14. VENDOR PORTAL — VENDOR BANKING
+-- =============================================================
 
 CREATE TABLE vendor_bank_accounts (
-    id SERIAL PRIMARY KEY,
-    org_id INT NOT NULL,
-    account_name VARCHAR(255) NOT NULL,
-    account_number VARCHAR(50) NOT NULL,
-    ifsc_code VARCHAR(20) NOT NULL,
-    bank_name VARCHAR(255) NULL,
-    branch VARCHAR(255) NULL,
-    is_primary BOOLEAN NOT NULL DEFAULT FALSE,
-    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
-    verified_by INT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT fk_vba_org_id FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE,
-    CONSTRAINT fk_vba_verified_by FOREIGN KEY (verified_by) REFERENCES admins(id) ON DELETE SET NULL
+    id              SERIAL          PRIMARY KEY,
+    org_id          INT             NOT NULL,
+    account_name    VARCHAR(255)    NOT NULL,
+    account_number  VARCHAR(50)     NOT NULL,
+    ifsc_code       VARCHAR(20)     NOT NULL,
+    bank_name       VARCHAR(255),
+    branch          VARCHAR(255),
+    is_primary      BOOLEAN         NOT NULL DEFAULT FALSE,
+    is_verified     BOOLEAN         NOT NULL DEFAULT FALSE,
+    verified_by     INT,
+    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    deleted_at      TIMESTAMPTZ,
+    CONSTRAINT fk_vba_org         FOREIGN KEY (org_id)      REFERENCES organizations (id) ON DELETE CASCADE,
+    CONSTRAINT fk_vba_verified_by FOREIGN KEY (verified_by) REFERENCES admins (id)        ON DELETE SET NULL
 );
 
-CREATE INDEX idx_vba_org_id ON vendor_bank_accounts(org_id);
-CREATE INDEX idx_vba_is_primary ON vendor_bank_accounts(is_primary);
+CREATE INDEX idx_vba_org_id    ON vendor_bank_accounts (org_id);
+CREATE INDEX idx_vba_is_primary ON vendor_bank_accounts (is_primary);
 
-COMMENT ON TABLE vendor_bank_accounts IS 'Bank accounts for organizations (payout destinations)';
 
--- ============================================================
--- MODULE 4 — PRODUCT CATALOGUE (SHARED)
--- ============================================================
-
-CREATE TABLE product_categories (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(150) NOT NULL,
-    parent_id INT NULL,
-    sort_order SMALLINT NOT NULL DEFAULT 0,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT uq_cat_name_parent UNIQUE (name, parent_id),
-    CONSTRAINT fk_cat_parent_id FOREIGN KEY (parent_id) REFERENCES product_categories(id) ON DELETE SET NULL
-);
-
-CREATE INDEX idx_product_categories_is_active ON product_categories(is_active);
-
-COMMENT ON TABLE product_categories IS 'Global product category taxonomy; shared across portals';
-
--- ============================================================
--- PRODUCTS (CORE SHARED TABLE)
--- organization_id = seller (manufacturer org in vendor portal view)
--- ============================================================
-
-CREATE TABLE products (
-    id SERIAL PRIMARY KEY,
-    manufacturer_org_id INT NOT NULL,
-    category_id INT NULL,
-    sku VARCHAR(100) NULL,
-    name VARCHAR(255) NOT NULL,
-    grade VARCHAR(100) NULL,
-    purity_percentage NUMERIC(5,2) NULL,
-    thickness NUMERIC(10,3) NULL,
-    tensile_strength NUMERIC(10,3) NULL,
-    chemical_composition TEXT NULL,
-    specifications JSONB NULL,
-    unit_of_measurement VARCHAR(20) NOT NULL DEFAULT 'kg',
-    availability_type VARCHAR(20) NOT NULL DEFAULT 'ex_stock',
-    lead_time_days INT NOT NULL DEFAULT 0,
-    moq_quantity NUMERIC(12,3) NOT NULL DEFAULT 1.000,
-    moq_unit VARCHAR(50) NULL,
-    cert_url VARCHAR(500) NULL,
-    listing_status VARCHAR(20) NOT NULL DEFAULT 'active',
-    deactivated_at TIMESTAMPTZ NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT uq_products_org_sku UNIQUE (manufacturer_org_id, sku),
-    CONSTRAINT fk_products_org_id FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE CASCADE,
-    CONSTRAINT fk_products_category_id FOREIGN KEY (category_id) REFERENCES product_categories(id) ON DELETE SET NULL
-);
-
-CREATE INDEX idx_products_org_id ON products(manufacturer_org_id);
-CREATE INDEX idx_products_listing_status ON products(listing_status);
-CREATE INDEX idx_products_category_id ON products(category_id);
-
-COMMENT ON TABLE products IS 'Product catalog; org_id = seller (manufacturer in vendor portal)';
-COMMENT ON COLUMN products.org_id IS 'Selling organization (manufacturer in vendor portal, supplier in customer portal)';
-
--- ============================================================
--- PRODUCT TAGS & MAPPING (SHARED)
--- ============================================================
-
-CREATE TABLE product_tags (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT uq_product_tags_name UNIQUE (name)
-);
-
-COMMENT ON TABLE product_tags IS 'Product discovery tags; shared taxonomy';
-
-CREATE TABLE product_tag_map (
-    product_id INT NOT NULL,
-    tag_id INT NOT NULL,
-
-    PRIMARY KEY (product_id, tag_id),
-    CONSTRAINT fk_ptm_product_id FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-    CONSTRAINT fk_ptm_tag_id FOREIGN KEY (tag_id) REFERENCES product_tags(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_ptm_tag_id ON product_tag_map(tag_id);
-
-COMMENT ON TABLE product_tag_map IS 'Product-tag mapping; many-to-many relationship';
-
--- ============================================================
--- MODULE 5 — CONTRACTS & PRODUCT PRICING (REORDERED: I2 FIX)
--- ============================================================
-
-CREATE TABLE contracts (
-    id SERIAL PRIMARY KEY,
-    code VARCHAR(50) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    type VARCHAR(30) NOT NULL,
-    manufacturer_org_id INT NULL,
-    customer_org_id INT NULL,
-    valid_from DATE NULL,
-    valid_till DATE NULL,
-    renewal_type VARCHAR(10) NOT NULL DEFAULT 'manual',
-    status contract_status_enum NOT NULL DEFAULT 'draft',
-    terms TEXT NULL,
-    signed_by_vendor BOOLEAN NOT NULL DEFAULT FALSE,
-    signed_by_vendor_at TIMESTAMPTZ NULL,
-    signed_by_buyer BOOLEAN NOT NULL DEFAULT FALSE,
-    signed_by_buyer_at TIMESTAMPTZ NULL,
-    approved_by INT NULL,
-    approved_at TIMESTAMPTZ NULL,
-    document_url VARCHAR(500) NULL,
-    created_by INT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT uq_contracts_code UNIQUE (code),
-    CONSTRAINT fk_contracts_manufacturer_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE SET NULL,
-    CONSTRAINT fk_contracts_customer_org FOREIGN KEY (customer_org_id) REFERENCES organizations(id) ON DELETE SET NULL,
-    CONSTRAINT fk_contracts_approved_by FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL,
-    CONSTRAINT fk_contracts_created_by FOREIGN KEY (created_by) REFERENCES admins(id) ON DELETE SET NULL
-);
-
-CREATE INDEX idx_contracts_manufacturer_org_id ON contracts(manufacturer_org_id);
-CREATE INDEX idx_contracts_customer_org_id ON contracts(customer_org_id);
-CREATE INDEX idx_contracts_status ON contracts(status);
-
-COMMENT ON TABLE contracts IS 'Master contracts between orgs; pairs with contract_product_pricing';
-COMMENT ON COLUMN contracts.manufacturer_org_id IS 'Selling organization (manufacturer in vendor portal)';
-COMMENT ON COLUMN contracts.customer_org_id IS 'Buying organization (customer in customer portal)';
-
--- ============================================================
--- CONTRACT PRODUCT PRICING (I2, I4 FIX)
--- Key interoperability table: vendor writes, buyer reads.
--- ============================================================
-
-CREATE TABLE contract_product_pricing (
-    id SERIAL PRIMARY KEY,
-    contract_id INT NOT NULL,
-    product_id INT NOT NULL,
-    agreed_unit_price NUMERIC(14,4) NOT NULL DEFAULT 0.0000,
-    currency VARCHAR(10) NOT NULL,
-    discount_percent NUMERIC(5,2) NOT NULL DEFAULT 0.00,
-    max_order_quantity INT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    effective_from DATE NOT NULL,
-    effective_to DATE NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT uq_cpp_contract_product UNIQUE (contract_id, product_id),
-    CONSTRAINT fk_cpp_contract_id FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
-    CONSTRAINT fk_cpp_product_id FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_cpp_contract_id ON contract_product_pricing(contract_id);
-CREATE INDEX idx_cpp_product_id ON contract_product_pricing(product_id);
-CREATE INDEX idx_cpp_is_active ON contract_product_pricing(is_active);
-
-COMMENT ON TABLE contract_product_pricing IS 'Per-contract product pricing and visibility; I4 fix: currency not defaulted';
-
--- One active contract per vendor-buyer pair (D1 FIX: PostgreSQL trigger)
-CREATE UNIQUE INDEX uq_active_contracts ON contracts(manufacturer_org_id, customer_org_id) WHERE status = 'active';
-
--- ============================================================
--- INVENTORY (SHARED)
--- Per-product stock levels per selling organization.
--- ============================================================
+-- =============================================================
+-- 15. VENDOR PORTAL — INVENTORY
+-- =============================================================
 
 CREATE TABLE inventory (
-    id SERIAL PRIMARY KEY,
-    org_id INT NOT NULL,
-    product_id INT NOT NULL,
-    available_stock NUMERIC(14,3) NOT NULL DEFAULT 0,
-    reserved_for_po NUMERIC(14,3) NOT NULL DEFAULT 0,
-    in_transit NUMERIC(14,3) NOT NULL DEFAULT 0,
-    low_stock_threshold NUMERIC(14,3) NOT NULL DEFAULT 0,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
+    id                  SERIAL              PRIMARY KEY,
+    org_id              INT                 NOT NULL,
+    product_id          INT                 NOT NULL,
+    available_stock     NUMERIC(14,3)       NOT NULL DEFAULT 0,
+    reserved_for_po     NUMERIC(14,3)       NOT NULL DEFAULT 0,
+    in_transit          NUMERIC(14,3)       NOT NULL DEFAULT 0,
+    low_stock_threshold NUMERIC(14,3)       NOT NULL DEFAULT 0,
+    updated_at          TIMESTAMPTZ         NOT NULL DEFAULT NOW(),
     CONSTRAINT uq_inv_org_product UNIQUE (org_id, product_id),
-    CONSTRAINT fk_inv_org_id FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE,
-    CONSTRAINT fk_inv_product_id FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+    CONSTRAINT fk_inv_org         FOREIGN KEY (org_id)      REFERENCES organizations (id) ON DELETE CASCADE,
+    CONSTRAINT fk_inv_product     FOREIGN KEY (product_id)  REFERENCES products (id)     ON DELETE RESTRICT
 );
 
-CREATE INDEX idx_inventory_org_id ON inventory(org_id);
+CREATE TRIGGER trg_inventory_updated_at
+    BEFORE UPDATE ON inventory
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 
-COMMENT ON TABLE inventory IS 'Per-product stock levels for selling organizations';
+CREATE INDEX idx_inv_org_id ON inventory (org_id);
 
--- ============================================================
--- MODULE 6 — RFQ & SOURCING (SHARED)
--- ============================================================
+
+-- =============================================================
+-- 16. VENDOR PORTAL — RFQ & SOURCING
+-- =============================================================
 
 CREATE TABLE rfq (
-    id SERIAL PRIMARY KEY,
-    org_id INT NOT NULL,
-    title VARCHAR(255) NOT NULL,
-    description TEXT NULL,
-    category_id INT NULL,
-    location_filter VARCHAR(100) NULL,
-    min_vendor_rating NUMERIC(3,2) NULL,
-    deadline TIMESTAMP NOT NULL,
-    deadline_extended_to TIMESTAMP NULL,
-    is_priority BOOLEAN NOT NULL DEFAULT FALSE,
-    status rfq_status_enum NOT NULL DEFAULT 'draft',
-    cancellation_reason TEXT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT fk_rfq_org_id FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_rfq_category_id FOREIGN KEY (category_id) REFERENCES product_categories(id) ON DELETE SET NULL
+    id                      SERIAL              PRIMARY KEY,
+    org_id                  INT                 NOT NULL,
+    title                   VARCHAR(255)        NOT NULL,
+    description             TEXT,
+    category_id             INT,
+    location_filter         VARCHAR(100),
+    min_vendor_rating       NUMERIC(3,2),
+    deadline                TIMESTAMPTZ         NOT NULL,
+    deadline_extended_to    TIMESTAMPTZ,
+    is_priority             BOOLEAN             NOT NULL DEFAULT FALSE,
+    status                  rfq_status_enum     NOT NULL DEFAULT 'draft',
+    cancellation_reason     TEXT,
+    created_at              TIMESTAMPTZ         NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ         NOT NULL DEFAULT NOW(),
+    deleted_at              TIMESTAMPTZ,
+    CONSTRAINT fk_rfq_org      FOREIGN KEY (org_id)      REFERENCES organizations (id)    ON DELETE RESTRICT,
+    CONSTRAINT fk_rfq_category FOREIGN KEY (category_id) REFERENCES product_categories (id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_rfq_org_id ON rfq(org_id);
-CREATE INDEX idx_rfq_status ON rfq(status);
+CREATE TRIGGER trg_rfq_updated_at
+    BEFORE UPDATE ON rfq
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 
-COMMENT ON TABLE rfq IS 'RFQ raised by buyer orgs; status is ENUM';
+CREATE INDEX idx_rfq_org_id ON rfq (org_id);
+CREATE INDEX idx_rfq_status ON rfq (status);
 
--- ============================================================
--- RFQ BROADCAST (SHARED)
--- V7 FIX: Enforce org_type = 'manufacturer' for manufacturer_org_id
--- ============================================================
 
 CREATE OR REPLACE FUNCTION fn_validate_rfq_broadcast_vendor()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM organizations
@@ -657,663 +1091,171 @@ BEGIN
           AND org_type = 'manufacturer'
           AND deleted_at IS NULL
     ) THEN
-        RAISE EXCEPTION 'RFQ can only broadcast to manufacturing (selling) orgs';
+        RAISE EXCEPTION 'RFQ broadcast target must be a manufacturer org';
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 CREATE TABLE rfq_broadcast (
-    id SERIAL PRIMARY KEY,
-    rfq_id INT NOT NULL,
-    manufacturer_org_id INT NOT NULL,
-    sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    viewed BOOLEAN NOT NULL DEFAULT FALSE,
-    responded BOOLEAN NOT NULL DEFAULT FALSE,
-
-    CONSTRAINT uq_rfq_broadcast UNIQUE (rfq_id, manufacturer_org_id),
-    CONSTRAINT fk_rfqb_rfq_id FOREIGN KEY (rfq_id) REFERENCES rfq(id) ON DELETE CASCADE,
-    CONSTRAINT fk_rfqb_manufacturer_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT
+    id                  SERIAL      PRIMARY KEY,
+    rfq_id              INT         NOT NULL,
+    manufacturer_org_id INT         NOT NULL,
+    sent_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    viewed              BOOLEAN     NOT NULL DEFAULT FALSE,
+    responded           BOOLEAN     NOT NULL DEFAULT FALSE,
+    CONSTRAINT uq_rfq_broadcast     UNIQUE (rfq_id, manufacturer_org_id),
+    CONSTRAINT fk_rfqb_rfq          FOREIGN KEY (rfq_id)              REFERENCES rfq (id)           ON DELETE CASCADE,
+    CONSTRAINT fk_rfqb_manufacturer FOREIGN KEY (manufacturer_org_id) REFERENCES organizations (id) ON DELETE RESTRICT
 );
 
 CREATE TRIGGER trg_rfq_broadcast_vendor_check
-BEFORE INSERT ON rfq_broadcast
-FOR EACH ROW
-EXECUTE FUNCTION fn_validate_rfq_broadcast_vendor();
+    BEFORE INSERT ON rfq_broadcast
+    FOR EACH ROW EXECUTE FUNCTION fn_validate_rfq_broadcast_vendor();
 
-CREATE INDEX idx_rfq_broadcast_rfq_id ON rfq_broadcast(rfq_id);
-CREATE INDEX idx_rfq_broadcast_manufacturer_org ON rfq_broadcast(manufacturer_org_id);
+CREATE INDEX idx_rfqb_rfq_id          ON rfq_broadcast (rfq_id);
+CREATE INDEX idx_rfqb_manufacturer_org ON rfq_broadcast (manufacturer_org_id);
 
-COMMENT ON TABLE rfq_broadcast IS 'RFQ broadcast targets; V7 fix: org_type check enforced';
-
--- ============================================================
--- QUOTES (SHARED)
--- ============================================================
 
 CREATE TABLE quotes (
-    id SERIAL PRIMARY KEY,
-    rfq_id INT NOT NULL,
-    manufacturer_org_id INT NOT NULL,
-    price NUMERIC(14,2) NOT NULL,
-    lead_time_days INT NOT NULL,
-    compliance_notes TEXT NULL,
-    version SMALLINT NOT NULL DEFAULT 1,
-    is_locked BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT fk_quotes_rfq_id FOREIGN KEY (rfq_id) REFERENCES rfq(id) ON DELETE CASCADE,
-    CONSTRAINT fk_quotes_manufacturer_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT
+    id                  SERIAL          PRIMARY KEY,
+    rfq_id              INT             NOT NULL,
+    manufacturer_org_id INT             NOT NULL,
+    price               NUMERIC(14,2)   NOT NULL,
+    lead_time_days      INT             NOT NULL,
+    compliance_notes    TEXT,
+    version             SMALLINT        NOT NULL DEFAULT 1,
+    is_locked           BOOLEAN         NOT NULL DEFAULT FALSE,
+    created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    deleted_at          TIMESTAMPTZ,
+    CONSTRAINT fk_quotes_rfq          FOREIGN KEY (rfq_id)              REFERENCES rfq (id)           ON DELETE CASCADE,
+    CONSTRAINT fk_quotes_manufacturer FOREIGN KEY (manufacturer_org_id) REFERENCES organizations (id) ON DELETE RESTRICT
 );
 
-CREATE INDEX idx_quotes_rfq_id ON quotes(rfq_id);
-CREATE INDEX idx_quotes_manufacturer_org ON quotes(manufacturer_org_id);
+CREATE INDEX idx_quotes_rfq_id          ON quotes (rfq_id);
+CREATE INDEX idx_quotes_manufacturer_org ON quotes (manufacturer_org_id);
 
-COMMENT ON TABLE quotes IS 'Vendor quotations for RFQ requests';
 
--- ============================================================
--- MODULE 7 — ORDERS (CORE SHARED TABLE)
--- ============================================================
-
-CREATE TABLE orders (
-    id SERIAL PRIMARY KEY,
-    order_number VARCHAR(100) NOT NULL,
-    customer_org_id INT NOT NULL,
-    manufacturer_org_id INT NOT NULL,
-    contract_id INT NULL,
-    status order_status_enum NOT NULL DEFAULT 'draft',
-    priority VARCHAR(10) NOT NULL DEFAULT 'normal',
-    total_amount NUMERIC(16,2) NOT NULL DEFAULT 0.00,
-    currency VARCHAR(10) NOT NULL DEFAULT 'INR',
-    delivery_address TEXT NULL,
-    required_by_date DATE NULL,
-    special_instructions TEXT NULL,
-    grn_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
-    grn_confirmed_at TIMESTAMPTZ NULL,
-    grn_confirmed_by INT NULL,
-    created_by INT NULL,
-    approved_by INT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT uq_orders_order_number UNIQUE (order_number),
-    CONSTRAINT fk_orders_customer_org FOREIGN KEY (customer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_orders_manufacturer_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_orders_contract FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE SET NULL,
-    CONSTRAINT fk_orders_grn_by FOREIGN KEY (grn_confirmed_by) REFERENCES users(id) ON DELETE SET NULL,
-    CONSTRAINT fk_orders_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-    CONSTRAINT fk_orders_approved_by FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
-);
-
-CREATE INDEX idx_orders_customer_org_id ON orders(customer_org_id);
-CREATE INDEX idx_orders_manufacturer_org_id ON orders(manufacturer_org_id);
-CREATE INDEX idx_orders_status ON orders(status);
-CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
-
-COMMENT ON TABLE orders IS 'Orders: customer_org creates, manufacturer_org fulfills; contract_id enables CPP lookup (V2); created_by FK to users (V1); status is ENUM (V4)';
-
--- ============================================================
--- ORDER ITEMS (SHARED)
--- ============================================================
-
-CREATE TABLE order_items (
-    id SERIAL PRIMARY KEY,
-    order_id INT NOT NULL,
-    product_id INT NOT NULL,
-    contract_pricing_id INT NULL,
-    product_name VARCHAR(255) NOT NULL,
-    quantity NUMERIC(12,3) NOT NULL,
-    shipped_qty NUMERIC(12,3) NOT NULL DEFAULT 0,
-    unit VARCHAR(50) NULL,
-    unit_price NUMERIC(14,4) NOT NULL,
-    gst_percentage NUMERIC(5,2) NOT NULL DEFAULT 18.00,
-    total_price NUMERIC(16,2) NOT NULL,
-    notes TEXT NULL,
-
-    CONSTRAINT fk_oi_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-    CONSTRAINT fk_oi_product_id FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_oi_cpp_id FOREIGN KEY (contract_pricing_id) REFERENCES contract_product_pricing(id) ON DELETE SET NULL
-);
-
-CREATE INDEX idx_order_items_order_id ON order_items(order_id);
-CREATE INDEX idx_order_items_product_id ON order_items(product_id);
-
-COMMENT ON TABLE order_items IS 'Line items in orders; contract_pricing_id locks price at order time';
-
--- ============================================================
--- ORDER STATUS HISTORY (SHARED)
--- ============================================================
-
-CREATE TABLE order_status_history (
-    id BIGSERIAL PRIMARY KEY,
-    order_id INT NOT NULL,
-    changed_by INT NOT NULL,
-    previous_status order_status_enum NULL,
-    new_status order_status_enum NOT NULL,
-    note TEXT NULL,
-    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT fk_osh_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-    CONSTRAINT fk_osh_changed_by FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE RESTRICT
-);
-
-CREATE INDEX idx_osh_order_id ON order_status_history(order_id);
-CREATE INDEX idx_osh_changed_at ON order_status_history(changed_at DESC);
-
-COMMENT ON TABLE order_status_history IS 'Order status audit trail';
-
--- ============================================================
--- PO NEGOTIATIONS (SHARED)
--- V5 FIX: initiated_by_user_id FK added alongside initiated_by string
--- ============================================================
+-- =============================================================
+-- 17. VENDOR PORTAL — PO NEGOTIATIONS
+-- =============================================================
 
 CREATE TABLE po_negotiations (
-    id SERIAL PRIMARY KEY,
-    order_id INT NOT NULL,
-    round_number SMALLINT NOT NULL DEFAULT 1,
-    initiated_by VARCHAR(20) NOT NULL,
-    initiated_by_user_id INT NOT NULL,
-    counter_quantity NUMERIC(12,3) NULL,
-    counter_price NUMERIC(14,2) NULL,
-    counter_delivery_date DATE NULL,
-    notes TEXT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT fk_pon_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-    CONSTRAINT fk_pon_initiated_by_user FOREIGN KEY (initiated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    id                      SERIAL          PRIMARY KEY,
+    order_id                INT             NOT NULL,
+    round_number            SMALLINT        NOT NULL DEFAULT 1,
+    initiated_by            VARCHAR(20)     NOT NULL CHECK (initiated_by IN ('buyer', 'vendor')),
+    initiated_by_user_id    INT             NOT NULL,
+    counter_quantity        NUMERIC(12,3),
+    counter_price           NUMERIC(14,2),
+    counter_delivery_date   DATE,
+    status                  VARCHAR(20)     NOT NULL DEFAULT 'pending'
+                                CHECK (status IN ('pending', 'accepted', 'rejected')),
+    note                    TEXT,
+    created_at              TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_pon_order    FOREIGN KEY (order_id)             REFERENCES orders (id) ON DELETE CASCADE,
+    CONSTRAINT fk_pon_user     FOREIGN KEY (initiated_by_user_id) REFERENCES users (id)  ON DELETE RESTRICT
 );
 
-CREATE INDEX idx_po_negotiations_order_id ON po_negotiations(order_id);
+CREATE INDEX idx_pon_order_id ON po_negotiations (order_id);
 
-COMMENT ON TABLE po_negotiations IS 'Negotiation rounds; V5 fix: initiated_by_user_id FK added';
 
--- ============================================================
--- MODULE 8 — SHIPMENTS (SHARED)
--- ============================================================
-
-CREATE TABLE shipments (
-    id SERIAL PRIMARY KEY,
-    shipment_number VARCHAR(100) NOT NULL,
-    order_id INT NOT NULL,
-    manufacturer_org_id INT NOT NULL,
-    customer_org_id INT NOT NULL,
-    is_partial BOOLEAN NOT NULL DEFAULT FALSE,
-    shipment_status shipment_status_enum NOT NULL DEFAULT 'created',
-    carrier_name VARCHAR(255) NULL,
-    vehicle_number VARCHAR(50) NULL,
-    tracking_number VARCHAR(100) NULL,
-    tracking_url VARCHAR(500) NULL,
-    current_location VARCHAR(255) NULL,
-    eway_bill_number VARCHAR(100) NULL,
-    number_of_packages INT NULL,
-    total_weight_kg NUMERIC(10,3) NULL,
-    condition_status VARCHAR(20) NULL,
-    delivery_remarks TEXT NULL,
-    received_by INT NULL,
-    dispatched_by INT NULL,
-    document_url VARCHAR(500) NULL,
-    dispatch_date TIMESTAMP NULL,
-    estimated_delivery_date TIMESTAMP NULL,
-    actual_delivery_date TIMESTAMP NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT uq_shipments_shipment_number UNIQUE (shipment_number),
-    CONSTRAINT fk_shipments_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_shipments_manufacturer_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_shipments_customer_org FOREIGN KEY (customer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_shipments_received_by FOREIGN KEY (received_by) REFERENCES users(id) ON DELETE SET NULL,
-    CONSTRAINT fk_shipments_dispatched_by FOREIGN KEY (dispatched_by) REFERENCES users(id) ON DELETE SET NULL
-);
-
-CREATE INDEX idx_shipments_order_id ON shipments(order_id);
-CREATE INDEX idx_shipments_manufacturer_org ON shipments(manufacturer_org_id);
-CREATE INDEX idx_shipments_shipment_status ON shipments(shipment_status);
-
-COMMENT ON TABLE shipments IS 'Shipments; shipment_number NOT NULL (V6); shipment_status is ENUM; dispatched_by added';
-
--- ============================================================
--- SHIPMENT EVENTS (NEW - SHARED)
--- ============================================================
-
-CREATE TABLE shipment_events (
-    id BIGSERIAL PRIMARY KEY,
-    shipment_id INT NOT NULL,
-    event_type VARCHAR(100) NOT NULL,
-    location VARCHAR(255) NULL,
-    description TEXT NULL,
-    event_timestamp TIMESTAMPTZ NOT NULL,
-    source VARCHAR(20) NOT NULL DEFAULT 'system',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT fk_se_shipment_id FOREIGN KEY (shipment_id) REFERENCES shipments(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_se_shipment_id ON shipment_events(shipment_id);
-CREATE INDEX idx_se_event_timestamp ON shipment_events(event_timestamp DESC);
-
-COMMENT ON TABLE shipment_events IS 'Granular tracking events (carrier API, manual, system)';
-
--- ============================================================
--- DELIVERY CONFIRMATIONS (NEW - SHARED)
--- ============================================================
-
-CREATE TABLE delivery_confirmations (
-    id SERIAL PRIMARY KEY,
-    shipment_id INT NOT NULL,
-    confirmed_by INT NOT NULL,
-    signature_url VARCHAR(500) NULL,
-    proof_of_delivery_url VARCHAR(500) NULL,
-    notes TEXT NULL,
-    confirmed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT uq_dc_shipment UNIQUE (shipment_id),
-    CONSTRAINT fk_dc_shipment_id FOREIGN KEY (shipment_id) REFERENCES shipments(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_dc_confirmed_by FOREIGN KEY (confirmed_by) REFERENCES users(id) ON DELETE RESTRICT
-);
-
-CREATE INDEX idx_dc_shipment_id ON delivery_confirmations(shipment_id);
-
-COMMENT ON TABLE delivery_confirmations IS 'Formal delivery confirmations with POD';
-
--- ============================================================
--- MODULE 9 — INVOICES (SHARED)
--- ============================================================
-
-CREATE TABLE invoices (
-    id SERIAL PRIMARY KEY,
-    invoice_number VARCHAR(100) NOT NULL,
-    order_id INT NOT NULL,
-    manufacturer_org_id INT NOT NULL,
-    customer_org_id INT NOT NULL,
-    invoice_type VARCHAR(20) NOT NULL DEFAULT 'proforma',
-    gross_amount NUMERIC(16,4) NOT NULL,
-    gst_amount NUMERIC(14,4) NOT NULL DEFAULT 0.0000,
-    tds_amount NUMERIC(14,4) NOT NULL DEFAULT 0.0000,
-    net_amount NUMERIC(16,4) NOT NULL,
-    status invoice_status_enum NOT NULL DEFAULT 'draft',
-    issue_date DATE NULL,
-    due_date DATE NULL,
-    submitted_at TIMESTAMPTZ NULL,
-    document_url VARCHAR(500) NULL,
-    notes TEXT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT uq_invoices_invoice_number UNIQUE (invoice_number),
-    CONSTRAINT fk_invoices_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_invoices_manufacturer_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_invoices_customer_org FOREIGN KEY (customer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT
-);
-
-CREATE INDEX idx_invoices_order_id ON invoices(order_id);
-CREATE INDEX idx_invoices_manufacturer_org ON invoices(manufacturer_org_id);
-CREATE INDEX idx_invoices_status ON invoices(status);
-CREATE INDEX idx_invoices_due_date ON invoices(due_date);
-
-COMMENT ON TABLE invoices IS 'GST-compliant invoices; status is ENUM';
-
--- ============================================================
--- PAYMENTS (SHARED)
--- ============================================================
-
-CREATE TABLE payments (
-    id SERIAL PRIMARY KEY,
-    invoice_id INT NOT NULL,
-    customer_org_id INT NOT NULL,
-    manufacturer_org_id INT NOT NULL,
-    amount NUMERIC(16,4) NOT NULL,
-    payment_method payment_method_enum NOT NULL,
-    gateway_txn_id VARCHAR(255) NULL,
-    status payment_status_enum NOT NULL DEFAULT 'pending',
-    initiated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    completed_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT fk_payments_invoice_id FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_payments_customer_org FOREIGN KEY (customer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_payments_manufacturer_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT
-);
-
-CREATE INDEX idx_payments_invoice_id ON payments(invoice_id);
-CREATE INDEX idx_payments_status ON payments(status);
-
-COMMENT ON TABLE payments IS 'Payment transactions; status is ENUM';
-
--- ============================================================
--- VENDOR PAYOUTS (SHARED)
--- ============================================================
+-- =============================================================
+-- 18. VENDOR PORTAL — PAYOUTS
+-- =============================================================
 
 CREATE TABLE vendor_payouts (
-    id SERIAL PRIMARY KEY,
-    manufacturer_org_id INT NOT NULL,
-    period_start DATE NOT NULL,
-    period_end DATE NOT NULL,
-    gross_amount NUMERIC(16,4) NOT NULL,
-    commission_rate NUMERIC(5,2) NOT NULL DEFAULT 0.00,
-    commission_amount NUMERIC(14,4) NOT NULL DEFAULT 0.00,
-    net_payout NUMERIC(16,4) NOT NULL,
-    status payout_status_enum NOT NULL DEFAULT 'scheduled',
-    triggered_by VARCHAR(20) NOT NULL DEFAULT 'scheduled',
-    approved_by INT NULL,
-    bank_account_id INT NULL,
-    scheduled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    completed_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT fk_vp_manufacturer_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_vp_approved_by FOREIGN KEY (approved_by) REFERENCES admins(id) ON DELETE SET NULL,
-    CONSTRAINT fk_vp_bank_account FOREIGN KEY (bank_account_id) REFERENCES vendor_bank_accounts(id) ON DELETE SET NULL
+    id                  SERIAL                  PRIMARY KEY,
+    manufacturer_org_id INT                     NOT NULL,
+    invoice_id          INT                     NOT NULL,
+    gross_amount        NUMERIC(16,4)           NOT NULL,
+    platform_fee        NUMERIC(16,4)           NOT NULL DEFAULT 0,
+    tax_deducted        NUMERIC(16,4)           NOT NULL DEFAULT 0,
+    net_payout          NUMERIC(16,4)           NOT NULL,
+    status              payout_status_enum      NOT NULL DEFAULT 'scheduled',
+    scheduled_date      DATE,
+    processed_at        TIMESTAMPTZ,
+    bank_account_id     INT,
+    reference_number    VARCHAR(100),
+    notes               TEXT,
+    created_at          TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_vp_manufacturer FOREIGN KEY (manufacturer_org_id) REFERENCES organizations (id)    ON DELETE RESTRICT,
+    CONSTRAINT fk_vp_invoice      FOREIGN KEY (invoice_id)          REFERENCES invoices (id)          ON DELETE RESTRICT,
+    CONSTRAINT fk_vp_bank_account FOREIGN KEY (bank_account_id)     REFERENCES vendor_bank_accounts (id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_vp_manufacturer_org ON vendor_payouts(manufacturer_org_id);
-CREATE INDEX idx_vp_status ON vendor_payouts(status);
+CREATE TRIGGER trg_vendor_payouts_updated_at
+    BEFORE UPDATE ON vendor_payouts
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 
-COMMENT ON TABLE vendor_payouts IS 'Vendor payouts/settlements; status is ENUM';
+CREATE INDEX idx_vp_manufacturer_org ON vendor_payouts (manufacturer_org_id);
+CREATE INDEX idx_vp_status           ON vendor_payouts (status);
 
--- ============================================================
--- MODULE 10 — DISPUTES (SHARED)
--- ============================================================
 
-CREATE TABLE support_tickets (
-    id SERIAL PRIMARY KEY,
-    order_id INT NOT NULL,
-    customer_org_id INT NOT NULL,
-    manufacturer_org_id INT NOT NULL,
-    rma_number VARCHAR(50) NOT NULL,
-    dispute_type VARCHAR(30) NOT NULL,
-    category VARCHAR(30) NULL,
-    description TEXT NULL,
-    is_partial BOOLEAN NOT NULL DEFAULT FALSE,
-    status ticket_status_enum NOT NULL DEFAULT 'requested',
-    resolution_type VARCHAR(30) NULL,
-    mediator_id INT NULL,
-    raised_by INT NULL,
-    resolved_at TIMESTAMPTZ NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
+-- =============================================================
+-- 19. VENDOR PORTAL — DISPUTES (RMA / FORMAL DISPUTE)
+-- Separate from support_tickets (customer portal general support).
+-- Link: support_tickets.dispute_id → disputes.id (escalation path).
+-- =============================================================
 
-    CONSTRAINT uq_disputes_rma_number UNIQUE (rma_number),
-    CONSTRAINT fk_disputes_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_disputes_customer_org FOREIGN KEY (customer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_disputes_manufacturer_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_disputes_mediator FOREIGN KEY (mediator_id) REFERENCES admins(id) ON DELETE SET NULL,
-    CONSTRAINT fk_disputes_raised_by FOREIGN KEY (raised_by) REFERENCES users(id) ON DELETE SET NULL
+CREATE TABLE disputes (
+    id                  SERIAL                  PRIMARY KEY,
+    order_id            INT                     NOT NULL,
+    customer_org_id     INT                     NOT NULL,
+    manufacturer_org_id INT                     NOT NULL,
+    rma_number          VARCHAR(50)             NOT NULL,
+    dispute_type        VARCHAR(30)             NOT NULL,
+    category            VARCHAR(30),
+    description         TEXT,
+    is_partial          BOOLEAN                 NOT NULL DEFAULT FALSE,
+    status              ticket_status_enum      NOT NULL DEFAULT 'requested',
+    resolution_type     VARCHAR(30),
+    mediator_id         INT,
+    raised_by           INT,
+    resolved_at         TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    deleted_at          TIMESTAMPTZ,
+    CONSTRAINT uq_disputes_rma          UNIQUE (rma_number),
+    CONSTRAINT fk_disputes_order        FOREIGN KEY (order_id)            REFERENCES orders (id)        ON DELETE RESTRICT,
+    CONSTRAINT fk_disputes_customer     FOREIGN KEY (customer_org_id)     REFERENCES organizations (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_disputes_manufacturer FOREIGN KEY (manufacturer_org_id) REFERENCES organizations (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_disputes_mediator     FOREIGN KEY (mediator_id)         REFERENCES admins (id)        ON DELETE SET NULL,
+    CONSTRAINT fk_disputes_raised_by    FOREIGN KEY (raised_by)           REFERENCES users (id)         ON DELETE SET NULL
 );
 
-CREATE INDEX idx_tickets_order_id ON disputes(order_id);
-CREATE INDEX idx_tickets_manufacturer_org ON disputes(manufacturer_org_id);
-CREATE INDEX idx_tickets_status ON disputes(status);
+CREATE TRIGGER trg_disputes_updated_at
+    BEFORE UPDATE ON disputes
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 
-COMMENT ON TABLE support_tickets IS 'Disputes/RMA requests; status is ENUM; maps to support_tickets in customer portal';
+CREATE INDEX idx_disputes_order_id          ON disputes (order_id);
+CREATE INDEX idx_disputes_manufacturer_org  ON disputes (manufacturer_org_id);
+CREATE INDEX idx_disputes_status            ON disputes (status);
 
--- ============================================================
--- REFUNDS (SHARED)
--- V3 FIX: FK constraint on dispute_id added
--- disputes table is now defined above — no forward reference
--- ============================================================
+-- Now that disputes table exists, add the FK from support_tickets
+ALTER TABLE support_tickets
+    ADD CONSTRAINT fk_st_dispute FOREIGN KEY (dispute_id) REFERENCES disputes (id) ON DELETE SET NULL;
+
+
+-- =============================================================
+-- 20. VENDOR PORTAL — REFUNDS
+-- =============================================================
 
 CREATE TABLE refunds (
-    id SERIAL PRIMARY KEY,
-    invoice_id INT NOT NULL,
-    dispute_id INT NULL,
-    refund_type VARCHAR(10) NOT NULL,
-    amount NUMERIC(14,4) NOT NULL,
-    status refund_status_enum NOT NULL DEFAULT 'initiated',
-    approved_by INT NULL,
-    initiated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    completed_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT fk_refunds_invoice_id FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_refunds_dispute_id FOREIGN KEY (dispute_id) REFERENCES support_tickets(id) ON DELETE SET NULL,
-    CONSTRAINT fk_refunds_approved_by FOREIGN KEY (approved_by) REFERENCES admins(id) ON DELETE SET NULL
+    id           SERIAL                  PRIMARY KEY,
+    invoice_id   INT                     NOT NULL,
+    dispute_id   INT,
+    refund_type  VARCHAR(10)             NOT NULL,
+    amount       NUMERIC(14,4)           NOT NULL,
+    status       refund_status_enum      NOT NULL DEFAULT 'initiated',
+    approved_by  INT,
+    initiated_at TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    CONSTRAINT fk_refunds_invoice    FOREIGN KEY (invoice_id)  REFERENCES invoices (id)  ON DELETE RESTRICT,
+    CONSTRAINT fk_refunds_dispute    FOREIGN KEY (dispute_id)  REFERENCES disputes (id)  ON DELETE SET NULL,
+    CONSTRAINT fk_refunds_approved   FOREIGN KEY (approved_by) REFERENCES admins (id)    ON DELETE SET NULL
 );
 
-CREATE INDEX idx_refunds_invoice_id ON refunds(invoice_id);
-CREATE INDEX idx_refunds_status ON refunds(status);
-
-COMMENT ON TABLE refunds IS 'Refunds/credits; V3 fix: dispute_id FK enforced; status is ENUM';
-
--- ============================================================
--- DISPUTE EVIDENCE (SHARED)
--- ============================================================
-
-CREATE TABLE dispute_evidence (
-    id SERIAL PRIMARY KEY,
-    dispute_id INT NOT NULL,
-    uploaded_by_type VARCHAR(20) NOT NULL,
-    uploaded_by_id INT NOT NULL,
-    file_url VARCHAR(500) NOT NULL,
-    file_type VARCHAR(20) NOT NULL,
-    description VARCHAR(255) NULL,
-    uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT fk_de_dispute_id FOREIGN KEY (dispute_id) REFERENCES support_tickets(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_de_dispute_id ON dispute_evidence(dispute_id);
-
-COMMENT ON TABLE dispute_evidence IS 'Evidence files for disputes';
-
--- ============================================================
--- DISPUTE RESOLUTIONS (SHARED)
--- ============================================================
-
-CREATE TABLE dispute_resolutions (
-    id SERIAL PRIMARY KEY,
-    dispute_id INT NOT NULL,
-    resolution_type VARCHAR(30) NOT NULL,
-    remarks TEXT NULL,
-    decided_by INT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT fk_dr_dispute_id FOREIGN KEY (dispute_id) REFERENCES support_tickets(id) ON DELETE RESTRICT,
-    CONSTRAINT fk_dr_decided_by FOREIGN KEY (decided_by) REFERENCES admins(id) ON DELETE SET NULL
-);
-
-COMMENT ON TABLE dispute_resolutions IS 'Dispute resolutions decided by admins';
-
--- ============================================================
--- MODULE 11 — MESSAGING (SHARED)
--- ============================================================
-
-CREATE TABLE messages (
-    id SERIAL PRIMARY KEY,
-    thread_id VARCHAR(50) NOT NULL,
-    context_type VARCHAR(20) NULL,
-    context_id INT NULL,
-    manufacturer_org_id INT NOT NULL,
-    customer_org_id INT NOT NULL,
-    sender_type VARCHAR(20) NOT NULL,
-    sender_id INT NOT NULL,
-    message_body TEXT NOT NULL,
-    is_read BOOLEAN NOT NULL DEFAULT FALSE,
-    read_at TIMESTAMPTZ NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT fk_messages_manufacturer_org FOREIGN KEY (manufacturer_org_id) REFERENCES organizations(id) ON DELETE CASCADE,
-    CONSTRAINT fk_messages_customer_org FOREIGN KEY (customer_org_id) REFERENCES organizations(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_messages_thread_id ON messages(thread_id);
-CREATE INDEX idx_messages_context ON messages(context_type, context_id);
-CREATE INDEX idx_messages_manufacturer_org ON messages(manufacturer_org_id);
-CREATE INDEX idx_messages_customer_org ON messages(customer_org_id);
-
-COMMENT ON TABLE messages IS 'Unified messaging between orgs; context_type: rfq, order, dispute, general';
-
--- ============================================================
--- MODULE 12 — NOTIFICATIONS (SHARED)
--- ============================================================
-
-CREATE TABLE notifications (
-    id SERIAL PRIMARY KEY,
-    recipient_type VARCHAR(20) NOT NULL,
-    recipient_id INT NOT NULL,
-    notification_type VARCHAR(50) NOT NULL,
-    channel VARCHAR(10) NOT NULL DEFAULT 'in_app',
-    title VARCHAR(255) NOT NULL,
-    message TEXT NOT NULL,
-    reference_type VARCHAR(50) NULL,
-    reference_id INT NULL,
-    is_read BOOLEAN NOT NULL DEFAULT FALSE,
-    read_at TIMESTAMPTZ NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT fk_notifications_recipient FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_notifications_recipient ON notifications(recipient_type, recipient_id);
-CREATE INDEX idx_notifications_is_read ON notifications(is_read);
-CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
-
-COMMENT ON TABLE notifications IS 'Notifications for both portals; reference_type: order, rfq, invoice, dispute';
-
--- ============================================================
--- MODULE 13 — MISSING TABLES (P3 Priority)
-
--- ============================================================
-
-CREATE TABLE warehouses (
-    id SERIAL PRIMARY KEY,
-    org_id INT NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    address TEXT NOT NULL,
-    city VARCHAR(100) NOT NULL,
-    state VARCHAR(100) NOT NULL,
-    pincode VARCHAR(20) NOT NULL,
-    country VARCHAR(100) NOT NULL DEFAULT 'India',
-    capacity NUMERIC(14,3) NOT NULL,
-    current_utilization NUMERIC(14,3) NOT NULL DEFAULT 0,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ NULL,
-
-    CONSTRAINT fk_warehouses_org_id FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_warehouses_org_id ON warehouses(org_id);
-
-COMMENT ON TABLE warehouses IS 'Warehouse/logistics locations for organizations';
-
--- ============================================================
--- DASHBOARD SNAPSHOTS (P3 Priority - Analytics)
--- ============================================================
-
-CREATE TABLE dashboard_snapshots (
-    id SERIAL PRIMARY KEY,
-    org_id INT NOT NULL,
-    snapshot_date DATE NOT NULL,
-    total_orders INT NOT NULL DEFAULT 0,
-    total_revenue NUMERIC(16,2) NOT NULL DEFAULT 0,
-    total_shipments INT NOT NULL DEFAULT 0,
-    active_contracts INT NOT NULL DEFAULT 0,
-    snapshot_data JSONB NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT uq_ds_org_date UNIQUE (org_id, snapshot_date),
-    CONSTRAINT fk_ds_org_id FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_ds_org_date ON dashboard_snapshots(org_id, snapshot_date DESC);
-
-COMMENT ON TABLE dashboard_snapshots IS 'Daily snapshots for analytics and reporting';
-
--- ============================================================
--- UNIFIED TRIGGER FUNCTION FOR ALL updated_at COLUMNS
--- (GAP 4 FIX: Single shared function, PostgreSQL idiom)
--- ============================================================
-
-CREATE OR REPLACE FUNCTION fn_set_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Apply trigger to all tables with updated_at
-CREATE TRIGGER trg_admins_updated_at BEFORE UPDATE ON admins FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_orgs_updated_at BEFORE UPDATE ON organizations FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_products_updated_at BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_rfq_updated_at BEFORE UPDATE ON rfq FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_orders_updated_at BEFORE UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_shipments_updated_at BEFORE UPDATE ON shipments FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_invoices_updated_at BEFORE UPDATE ON invoices FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_disputes_updated_at BEFORE UPDATE ON support_tickets FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_contracts_updated_at BEFORE UPDATE ON contracts FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_cpp_updated_at BEFORE UPDATE ON contract_product_pricing FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_inventory_updated_at BEFORE UPDATE ON inventory FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-CREATE TRIGGER trg_warehouses_updated_at BEFORE UPDATE ON warehouses FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-
--- ============================================================
--- SUMMARY OF CORRECTIONS (V3.2 vs V3.1)
--- ============================================================
---
--- GAP 1 — ARCHITECTURE ✅
---   Single unified PostgreSQL database for both portals
---   No duplicate tables; shared users, roles, organizations
---
--- GAP 2 — PK NAMING ✅
---   All PKs named 'id' (organizations.id, users.id, products.id, etc.)
---   Consistent with Customer Portal standard
---
--- GAP 3 — NAMED CONSTRAINTS ✅
---   All FKs explicitly named: fk_table_column
---   All UNIQUEs named: uq_table_columns
---   All CHECKs named: chk_table_condition
---   Example: CONSTRAINT fk_orders_customer_org FOREIGN KEY (customer_org_id)
---
--- GAP 4 — UNIFIED TRIGGER FUNCTION ✅
---   Single fn_set_updated_at() replaces per-table functions
---   Triggers placed immediately after each table
---
--- GAP 5 — TIMESTAMP IDIOM ✅
---   DEFAULT NOW() throughout (PostgreSQL standard)
---   Replaces CURRENT_TIMESTAMP
---
--- GAP 6 — ENUMS FOR ALL STATUS FIELDS ✅
---   order_status_enum (11 states)
---   shipment_status_enum (10 states)
---   invoice_status_enum (7 states)
---   payment_status_enum (5 states)
---   payout_status_enum (6 states)
---   ticket_status_enum (6 states)
---   refund_status_enum (5 states)
---   rfq_status_enum (5 states)
---   verify_status_enum (4 states)
---
--- GAP 7 — NO GLOSSARY TABLE ✅
---   Semantic mapping in SQL comments (org_type, column notes)
---   Example: COMMENT ON COLUMN organizations.org_type = '...'
---
--- GAP 8 — NO CREATE DATABASE ✅
---   Assumes database pre-created by DevOps
---   Only CREATE TABLE, ENUM, INDEX, TRIGGER, FUNCTION
---
--- FIXES FROM REPORT (D1, V1-V7, I1-I8) ✅
---   D1: Full PostgreSQL migration ✅
---   V1: contracts.created_by FK → users(id) ✅
---   V2: orders.contract_id added ✅
---   V3: refunds.dispute_id FK added ✅
---   V4: orders.status → order_status_enum ✅
---   V5: po_negotiations.initiated_by_user_id FK ✅
---   V6: shipments.shipment_number NOT NULL ✅
---   V7: rfq_broadcast org_type trigger ✅
---   I1: All PKs named 'id'; explicit aliases in views ✅
---   I2: DDL ordered: contracts before orders ✅
---   I3: contracts.approved_by, approved_at added ✅
---   I4: contract_product_pricing.currency not defaulted ✅
---   I5: Glossary comments (not table) ✅
---   I6: products.org_id comment explains alias ✅
---   I7: Consistent PK aliasing ✅
---   I8: disputes map to support_tickets via comments ✅
---
--- ============================================================
-
+CREATE INDEX idx_refunds_invoice_id ON refunds (invoice_id);
+CREATE INDEX idx_refunds_status     ON refunds (status);

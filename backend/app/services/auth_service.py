@@ -1,0 +1,208 @@
+"""
+Authentication service — handles registration and login for both
+portal users (users table) and platform admins (admins table).
+"""
+from datetime import datetime
+from sqlalchemy.orm import Session
+
+from app.core.security import hash_password, verify_password, create_access_token
+from app.models.organization import Organization, Role
+from app.models.user import User
+from app.models.vendor_portal import Admin
+from app.models.enums import OrgTypeEnum, RoleOrgTypeEnum, VerifyStatusEnum
+from app.repositories.user_repo import UserRepository, AdminRepository
+from app.repositories.organization_repo import OrganizationRepository
+from app.schemas.auth import RegisterRequest, LoginRequest, AdminLoginRequest
+from app.utils.mappers import map_role_to_org_type, map_org_type_to_role
+from app.exceptions import (
+    ConflictException, UnauthorizedException, NotFoundException,
+    ValidationException, DatabaseException, BusinessRuleException,
+)
+
+
+class AuthService:
+    def __init__(self, db: Session):
+        self.db = db
+        self.user_repo = UserRepository(db)
+        self.admin_repo = AdminRepository(db)
+        self.org_repo = OrganizationRepository(db)
+
+    # ------------------------------------------------------------------
+    # Registration
+    # ------------------------------------------------------------------
+    def register(self, data: RegisterRequest) -> dict:
+        """
+        Creates an Organization and a first User in a single transaction.
+        Maps frontend role ('vendor'/'manufacturer') to the correct org_type.
+        """
+        org_type = map_role_to_org_type(data.role)
+        if org_type is None:
+            raise ValidationException(
+                "Admins cannot self-register. Use the admin creation endpoint."
+            )
+
+        # Conflict: email already registered as an org
+        if self.org_repo.get_by_email(data.email):
+            raise ConflictException(
+                f"An organization with email '{data.email}' already exists."
+            )
+
+        try:
+            # 1. Create Organization
+            org = Organization(
+                name=data.org_name,
+                org_type=org_type,
+                email=data.email,
+                phone=data.phone,
+                address_line1=data.address_line1,
+                city=data.city,
+                state=data.state,
+                country=data.country,
+                postal_code=data.postal_code,
+                website=data.website,
+                verification_status=VerifyStatusEnum.pending,
+                is_active=True,
+            )
+            self.db.add(org)
+            self.db.flush()  # get org.id before committing
+
+            # 2. Resolve or create a default role for this org_type
+            role_org_type = (
+                RoleOrgTypeEnum.manufacturer
+                if org_type == OrgTypeEnum.manufacturer
+                else RoleOrgTypeEnum.customer
+            )
+            role = (
+                self.db.query(Role)
+                .filter(Role.name == "default", Role.org_type == role_org_type)
+                .first()
+            )
+            if not role:
+                role = Role(name="default", org_type=role_org_type)
+                self.db.add(role)
+                self.db.flush()
+
+            # 3. Create User
+            user = User(
+                org_id=org.id,
+                role_id=role.id,
+                first_name=data.first_name,
+                last_name=data.last_name,
+                email=data.email,
+                phone=data.user_phone,
+                password_hash=hash_password(data.password),
+                is_active=True,
+            )
+            self.db.add(user)
+            self.db.commit()
+            self.db.refresh(org)
+            self.db.refresh(user)
+        except Exception as exc:
+            self.db.rollback()
+            raise DatabaseException(details={"error": str(exc)})
+
+        return {
+            "org_id": org.id,
+            "user_id": user.id,
+            "email": user.email,
+            "org_name": org.name,
+            "role": data.role,
+            "verification_status": org.verification_status.value,
+            "message": (
+                "Registration successful. Your account is pending admin approval."
+            ),
+        }
+
+    # ------------------------------------------------------------------
+    # Login — Portal Users
+    # ------------------------------------------------------------------
+    def login(self, data: LoginRequest) -> dict:
+        user = self.user_repo.get_by_email(data.email)
+        if not user or not verify_password(data.password, user.password_hash):
+            raise UnauthorizedException("Invalid email or password.")
+
+        if not user.is_active:
+            raise UnauthorizedException("Your account has been deactivated.")
+
+        # Check org verification status
+        org = self.org_repo.get(user.org_id)
+        if org and org.verification_status != VerifyStatusEnum.verified:
+            raise BusinessRuleException(
+                f"Your organization's application is currently "
+                f"'{org.verification_status.value}'. Only approved accounts can log in."
+            )
+
+        # Verify the frontend role matches the org_type
+        expected_role = map_org_type_to_role(org.org_type) if org else None
+        if expected_role and data.role not in (expected_role, "admin"):
+            raise UnauthorizedException(
+                f"Role mismatch: your account is registered as '{expected_role}'."
+            )
+
+        # Update last_login
+        user.last_login = datetime.utcnow()
+        self.db.commit()
+
+        token = create_access_token(
+            subject=user.id,
+            extra_claims={
+                "org_id": user.org_id,
+                "role_id": user.role_id,
+                "org_type": org.org_type.value if org else None,
+                "type": "user",
+            },
+        )
+
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user_id": user.id,
+            "org_id": user.org_id,
+            "role": data.role,
+            "org_type": org.org_type.value if org else None,
+            "full_name": f"{user.first_name} {user.last_name}",
+            "email": user.email,
+        }
+
+    # ------------------------------------------------------------------
+    # Login — Platform Admins
+    # ------------------------------------------------------------------
+    def admin_login(self, data: AdminLoginRequest) -> dict:
+        admin = self.admin_repo.get_by_email(data.email)
+        if not admin or not verify_password(data.password, admin.password_hash):
+            raise UnauthorizedException("Invalid admin credentials.")
+
+        if not admin.is_active or admin.status != "active":
+            raise UnauthorizedException("Admin account is inactive or suspended.")
+
+        admin.last_login_at = datetime.utcnow()
+        self.db.commit()
+
+        token = create_access_token(
+            subject=admin.id,
+            extra_claims={"role": admin.role, "type": "admin"},
+        )
+
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "admin_id": admin.id,
+            "role": admin.role,
+            "name": admin.name,
+            "email": admin.email,
+        }
+
+    # ------------------------------------------------------------------
+    # Get current user from token subject
+    # ------------------------------------------------------------------
+    def get_user_by_id(self, user_id: int) -> User:
+        user = self.user_repo.get(user_id)
+        if not user:
+            raise NotFoundException("User")
+        return user
+
+    def get_admin_by_id(self, admin_id: int) -> Admin:
+        admin = self.admin_repo.get(admin_id)
+        if not admin:
+            raise NotFoundException("Admin")
+        return admin
