@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getOrders, updateOrderStatus, getRFQs, uploadQuotation, getProducts } from '../../utils/storage';
+import { getOrders, updateOrderStatus, getRFQs, uploadQuotation, getProducts, markRFQsAsSeen } from '../../utils/storage';
+import { orderApi, quoteApi } from '../../utils/api';
 import StatusBadge from '../../components/common/StatusBadge';
 import Toast from '../../components/common/Toast';
 import Modal from '../../components/common/Modal';
 import {
   CheckCircle, XCircle, Upload, FileText, Package,
-  ShoppingCart, AlertCircle, Clock, ChevronRight
+  ShoppingCart, AlertCircle, Clock, ChevronRight, Eye, Download
 } from 'lucide-react';
 
 // ──────────────────────────────────────────────────
@@ -67,9 +68,14 @@ const VendorOrders = () => {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
+  // PO detail modal
+  const [viewOrder, setViewOrder] = useState(null);
+  // Reject reason modal
+  const [rejectOrder, setRejectOrder] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+
   const load = () => {
     setOrders(getOrders({ vendorEmail: user.email }));
-    // Get all products by this vendor, then get RFQs targeting those products
     const myProducts = getProducts(user.email);
     const myProductIds = myProducts.map(p => p.id);
     const allRFQs = getRFQs({ vendorEmail: user.email });
@@ -79,10 +85,29 @@ const VendorOrders = () => {
   useEffect(() => { load(); }, []);
 
   // ── Order actions ──
-  const handleOrderAction = (id, status) => {
-    updateOrderStatus(id, status);
-    setToast({ message: `Order ${status}.`, type: 'success' });
-    load();
+  const handleOrderAction = async (id, action) => {
+    try {
+      await orderApi.vendorRespond(id, { action });
+      setToast({ message: `Order ${action === 'accept' ? 'accepted' : 'rejected'}.`, type: 'success' });
+      setViewOrder(null);
+      load();
+    } catch (err) {
+      setToast({ message: err.message || `Failed to ${action} order.`, type: 'error' });
+    }
+  };
+
+  const handleRejectSubmit = async () => {
+    if (!rejectReason.trim()) return;
+    try {
+      await orderApi.vendorRespond(rejectOrder.id, { action: 'reject', reason: rejectReason.trim() });
+      setToast({ message: 'Order rejected.', type: 'success' });
+      setRejectOrder(null);
+      setRejectReason('');
+      setViewOrder(null);
+      load();
+    } catch (err) {
+      setToast({ message: err.message || 'Failed to reject order.', type: 'error' });
+    }
   };
 
   // ── PDF file selection & validation ──
@@ -103,7 +128,6 @@ const VendorOrders = () => {
       return;
     }
 
-    // Convert to base64
     const reader = new FileReader();
     reader.onload = (ev) => {
       setPdfFile(file);
@@ -127,7 +151,7 @@ const VendorOrders = () => {
       manufacturerEmail: uploadRFQ.manufacturerEmail,
       manufacturerName: uploadRFQ.manufacturerName,
       fileName: pdfFile.name,
-      fileData: pdfPreview,  // base64
+      fileData: pdfPreview,
     });
 
     setToast({ message: 'Quotation PDF uploaded successfully!', type: 'success' });
@@ -148,6 +172,13 @@ const VendorOrders = () => {
   };
 
   const pendingRFQs = rfqs.filter(r => r.status === 'open').length;
+
+  // Mark all RFQs as seen when RFQ tab is active
+  useEffect(() => {
+    if (tab === 'rfqs' && rfqs.length > 0 && user?.email) {
+      markRFQsAsSeen(user.email, rfqs.map(r => r.id));
+    }
+  }, [tab, rfqs, user?.email]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -191,12 +222,15 @@ const VendorOrders = () => {
                     <td className="px-5 py-3 text-brand-400">{new Date(o.createdAt).toLocaleDateString()}</td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1.5">
-                        {o.status === 'pending' && (
+                        <button onClick={() => setViewOrder(o)} className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-400 hover:text-brand-700" title="View Details">
+                          <Eye size={15} />
+                        </button>
+                        {o.status === 'vendor_review' && (
                           <>
-                            <button onClick={() => handleOrderAction(o.id, 'accepted')} className="p-1.5 rounded-lg hover:bg-green-50 text-green-600" title="Accept">
+                            <button onClick={() => handleOrderAction(o.id, 'accept')} className="p-1.5 rounded-lg hover:bg-green-50 text-green-600" title="Accept">
                               <CheckCircle size={15} />
                             </button>
-                            <button onClick={() => handleOrderAction(o.id, 'rejected')} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500" title="Reject">
+                            <button onClick={() => { setRejectOrder(o); setRejectReason(''); }} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500" title="Reject">
                               <XCircle size={15} />
                             </button>
                           </>
@@ -343,6 +377,147 @@ const VendorOrders = () => {
               </button>
             </div>
           </form>
+        )}
+      </Modal>
+
+      {/* ── PO Detail Modal ── */}
+      <Modal open={!!viewOrder} onClose={() => setViewOrder(null)} title="Purchase Order Details">
+        {viewOrder && (
+          <div className="space-y-4">
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+              {[
+                ['Order ID', viewOrder.id],
+                ['Product', viewOrder.productName],
+                ['Manufacturer', viewOrder.manufacturerName || viewOrder.manufacturerEmail],
+                ['Quantity', viewOrder.quantity],
+                ['Status', viewOrder.status],
+                ['Date', new Date(viewOrder.createdAt).toLocaleDateString()],
+              ].map(([label, val]) => (
+                <div key={label}>
+                  <dt className="text-brand-400">{label}</dt>
+                  <dd className="font-medium text-brand-800">{val || '—'}</dd>
+                </div>
+              ))}
+              {viewOrder.deliveryAddress && (
+                <div className="sm:col-span-2">
+                  <dt className="text-brand-400">Delivery Address</dt>
+                  <dd className="font-medium text-brand-800 whitespace-pre-line">{viewOrder.deliveryAddress}</dd>
+                </div>
+              )}
+              {viewOrder.deliveryDate && (
+                <div>
+                  <dt className="text-brand-400">Expected Delivery</dt>
+                  <dd className="font-medium text-brand-800">{viewOrder.deliveryDate}</dd>
+                </div>
+              )}
+              {viewOrder.poNotes && (
+                <div className="sm:col-span-2">
+                  <dt className="text-brand-400">Notes</dt>
+                  <dd className="font-medium text-brand-800">{viewOrder.poNotes}</dd>
+                </div>
+              )}
+              {viewOrder.rejectionReason && (
+                <div className="sm:col-span-2">
+                  <dt className="text-brand-400">Rejection Reason</dt>
+                  <dd className="font-medium text-red-700">{viewOrder.rejectionReason}</dd>
+                </div>
+              )}
+            </dl>
+
+            {/* PO Document Preview */}
+            {viewOrder.poFileData && (
+              <div className="border-t border-surface-200 pt-4">
+                <p className="text-sm font-semibold text-brand-700 mb-2">Purchase Order Document</p>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-brand-600">
+                    <FileText size={14} /> {viewOrder.poFileName}
+                  </div>
+                  <iframe
+                    src={viewOrder.poFileData}
+                    title="PO Document Preview"
+                    className="w-full h-64 border border-surface-200 rounded-lg"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const win = window.open();
+                        if (win) win.document.write(`<iframe src="${viewOrder.poFileData}" style="width:100%;height:100vh;border:none;"></iframe>`);
+                      }}
+                      className="btn-secondary text-xs"
+                    >
+                      <Eye size={13} /> Open in New Tab
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = viewOrder.poFileData;
+                        a.download = viewOrder.poFileName || 'purchase-order.pdf';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                      }}
+                      className="btn-secondary text-xs"
+                    >
+                      <Download size={13} /> Download
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            {viewOrder.status === 'vendor_review' && (
+              <div className="flex gap-2 pt-2 border-t border-surface-200">
+                <button
+                  onClick={() => handleOrderAction(viewOrder.id, 'accept')}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700"
+                >
+                  <CheckCircle size={14} /> Accept PO
+                </button>
+                <button
+                  onClick={() => { setRejectOrder(viewOrder); setRejectReason(''); }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 text-red-700 text-sm font-medium hover:bg-red-100 border border-red-200"
+                >
+                  <XCircle size={14} /> Reject PO
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Reject Reason Modal ── */}
+      <Modal open={!!rejectOrder} onClose={() => { setRejectOrder(null); setRejectReason(''); }} title="Reject Purchase Order">
+        {rejectOrder && (
+          <div className="space-y-4">
+            <div className="p-3 bg-surface-100 rounded-lg">
+              <p className="text-sm font-semibold text-brand-900">{rejectOrder.productName}</p>
+              <p className="text-xs text-brand-400">Order: {rejectOrder.id} · From: {rejectOrder.manufacturerName || rejectOrder.manufacturerEmail}</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-brand-700 mb-1.5">
+                Rejection Reason <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                className="input-field resize-none h-24"
+                placeholder="Please provide a reason for rejecting this order..."
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => { setRejectOrder(null); setRejectReason(''); }} className="btn-secondary">Cancel</button>
+              <button
+                onClick={handleRejectSubmit}
+                disabled={!rejectReason.trim()}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+              >
+                <XCircle size={13} /> Confirm Rejection
+              </button>
+            </div>
+          </div>
         )}
       </Modal>
     </div>

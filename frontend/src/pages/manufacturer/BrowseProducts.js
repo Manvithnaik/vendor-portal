@@ -65,7 +65,7 @@ const BrowseProducts = () => {
   // ── Direct Purchase ─────────────────────────────────────────────────────────
   const handlePurchase = (p) => {
     const qty = getQty(p.id);
-    createOrder({
+    const result = createOrder({
       productId: p.id,
       productName: p.name,
       productPrice: p.price,
@@ -75,6 +75,10 @@ const BrowseProducts = () => {
       manufacturerName: user.name || user.email,
       quantity: qty,
     });
+    if (!result.success) {
+      setToast({ message: result.message, type: 'error' });
+      return;
+    }
     setToast({ message: `Order placed for ${qty}× "${p.name}"!`, type: 'success' });
   };
 
@@ -124,18 +128,6 @@ const BrowseProducts = () => {
                   {p.description || 'No description provided.'}
                 </p>
 
-                {/* Quantity input */}
-                <div className="mb-3">
-                  <label className="block text-xs font-medium text-brand-600 mb-1">Quantity</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={qty}
-                    onChange={(e) => setQty(p.id, e.target.value)}
-                    className="input-field py-2 text-sm"
-                  />
-                </div>
-
                 {/* Action buttons */}
                 <div className="space-y-2">
                   {/* RFQ button */}
@@ -153,15 +145,6 @@ const BrowseProducts = () => {
                       Request for Quotation (RFQ)
                     </button>
                   )}
-
-                  {/* Purchase button */}
-                  <button
-                    onClick={() => handlePurchase(p)}
-                    className="btn-primary w-full text-xs"
-                  >
-                    <ShoppingCart size={14} />
-                    Purchase
-                  </button>
                 </div>
               </div>
             );

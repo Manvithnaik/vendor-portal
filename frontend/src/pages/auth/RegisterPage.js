@@ -154,8 +154,16 @@ const RegisterPage = () => {
                   <Upload size={18} className="text-brand-400" />
                   <input
                     type="file"
+                    accept="application/pdf,image/*"
                     className="text-sm text-brand-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-brand-100 file:text-brand-700 hover:file:bg-brand-200"
-                    onChange={(e) => setForm({ ...form, businessDoc: e.target.files[0]?.name || '' })}
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      setForm({ ...form, businessDoc: file.name });
+                      const reader = new FileReader();
+                      reader.onload = (ev) => setForm(f => ({ ...f, businessDocData: ev.target.result }));
+                      reader.readAsDataURL(file);
+                    }}
                   />
                 </div>
               </div>

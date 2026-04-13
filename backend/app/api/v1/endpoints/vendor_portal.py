@@ -5,7 +5,7 @@ from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.schemas.vendor_portal import (
     RFQCreate, RFQUpdate, RFQResponse,
-    QuoteCreate, QuoteResponse,
+    QuoteCreate, QuoteResponse, QuoteSelectResponse,
     DisputeCreate, DisputeUpdate, DisputeResponse,
     RefundCreate, RefundResponse
 )
@@ -38,15 +38,37 @@ def update_rfq(rfq_id: int, data: RFQUpdate, db: Session = Depends(get_db), _=De
 
 @router.post("/rfq/quote", response_model=APIResponse)
 def submit_quote(data: QuoteCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """Vendor (manufacturer org) submits a quote PDF/price in response to an RFQ."""
     svc = RFQService(db)
     quote = svc.submit_quote(data, current_user.org_id)
     return success_response("Quote submitted.", QuoteResponse.model_validate(quote))
 
 @router.get("/rfq/{rfq_id}/quotes", response_model=APIResponse)
 def list_quotes(rfq_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """List all quotes for an RFQ."""
     svc = RFQService(db)
     quotes = svc.list_quotes_for_rfq(rfq_id)
     return success_response("Quotes retrieved.", [QuoteResponse.model_validate(q) for q in quotes])
+
+@router.post("/rfq/{rfq_id}/select-quote/{quote_id}", response_model=APIResponse)
+def select_quote(
+    rfq_id: int,
+    quote_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """
+    Manufacturer selects one quote from an RFQ.
+    This locks the chosen quote (status=accepted), rejects all others,
+    and closes the RFQ. After this, the manufacturer can create an order
+    referencing this quotation_id.
+    """
+    svc = RFQService(db)
+    quote = svc.select_quote(rfq_id, quote_id, current_user.org_id)
+    return success_response(
+        "Quote selected. You can now create an order with this quotation.",
+        QuoteSelectResponse(quote_id=quote.id, rfq_id=rfq_id)
+    )
 
 # --- Dispute Routes ---
 @router.post("/disputes", response_model=APIResponse)

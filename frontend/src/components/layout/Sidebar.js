@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { hasUnseenRFQs } from '../../utils/storage';
 import {
   LayoutDashboard, Users, Package, ShoppingCart, Truck,
   UserCircle, Settings, LogOut, ChevronLeft, ChevronRight,
@@ -37,9 +38,21 @@ const navItems = {
 const Sidebar = ({ role }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [hasNewRFQs, setHasNewRFQs] = useState(false);
   const { logout, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const items = navItems[role] || [];
+
+  // Check for unseen RFQs for vendor
+  useEffect(() => {
+    if (role === 'vendor' && user?.email) {
+      const check = () => setHasNewRFQs(hasUnseenRFQs(user.email));
+      check();
+      const interval = setInterval(check, 2000); // poll every 2s
+      return () => clearInterval(interval);
+    }
+  }, [role, user?.email, location.pathname]);
 
   const handleLogout = () => {
     logout();
@@ -73,7 +86,12 @@ const Sidebar = ({ role }) => {
             className={linkClasses}
             onClick={() => setMobileOpen(false)}
           >
-            <item.icon size={18} />
+            <div className="relative">
+              <item.icon size={18} />
+              {role === 'vendor' && item.to === '/vendor/orders' && hasNewRFQs && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+              )}
+            </div>
             {!collapsed && <span>{item.label}</span>}
           </NavLink>
         ))}

@@ -2,9 +2,10 @@
 import uuid
 from sqlalchemy.orm import Session
 from app.models.vendor_portal import RFQ, RFQBroadcast, Quote
+from app.models.enums import RfqStatusEnum, QuoteStatusEnum
 from app.repositories.rfq_repo import RFQRepository, QuoteRepository
 from app.schemas.vendor_portal import RFQCreate, RFQUpdate, QuoteCreate
-from app.exceptions import NotFoundException, ConflictException
+from app.exceptions import NotFoundException, ConflictException, BusinessRuleException
 
 
 class RFQService:
@@ -35,6 +36,7 @@ class RFQService:
             min_vendor_rating=data.min_vendor_rating,
             deadline=data.deadline,
             is_priority=data.is_priority,
+            status=RfqStatusEnum.active,  # RFQs go straight to active when created
         )
         self.db.add(rfq)
         self.db.flush()
@@ -56,6 +58,12 @@ class RFQService:
     def submit_quote(self, data: QuoteCreate, manufacturer_org_id: int) -> Quote:
         rfq = self.get_rfq(data.rfq_id)
 
+        if rfq.status not in (RfqStatusEnum.active, RfqStatusEnum.extended):
+            raise BusinessRuleException(
+                f"Cannot submit a quote for an RFQ with status '{rfq.status.value}'. "
+                "Only active or extended RFQs accept quotes."
+            )
+
         # Mark broadcast as responded
         broadcast = self.db.query(RFQBroadcast).filter(
             RFQBroadcast.rfq_id == data.rfq_id,
@@ -71,8 +79,55 @@ class RFQService:
             price=data.price,
             lead_time_days=data.lead_time_days,
             compliance_notes=data.compliance_notes,
+            status=QuoteStatusEnum.submitted,
         )
         return self.quote_repo.create(quote)
+
+    def select_quote(self, rfq_id: int, quote_id: int, selecting_org_id: int) -> Quote:
+        """
+        Manufacturer selects one quote from an RFQ.
+        - Marks chosen quote as 'accepted'
+        - Marks all other quotes on the same RFQ as 'rejected'
+        - Closes the RFQ
+        """
+        rfq = self.get_rfq(rfq_id)
+
+        # Ensure the manufacturer owns this RFQ
+        if rfq.org_id != selecting_org_id:
+            raise BusinessRuleException("You do not have permission to select a quote for this RFQ.")
+
+        # Get the selected quote
+        selected = self.db.query(Quote).filter(
+            Quote.id == quote_id,
+            Quote.rfq_id == rfq_id,
+        ).first()
+        if not selected:
+            raise NotFoundException("Quote")
+
+        if selected.status == QuoteStatusEnum.rejected:
+            raise BusinessRuleException("This quote has already been rejected and cannot be selected.")
+
+        # Reject all other quotes for this RFQ
+        other_quotes = self.db.query(Quote).filter(
+            Quote.rfq_id == rfq_id,
+            Quote.id != quote_id,
+        ).all()
+        for q in other_quotes:
+            q.status = QuoteStatusEnum.rejected
+            self.db.add(q)
+
+        # Accept the selected quote
+        selected.status = QuoteStatusEnum.accepted
+        selected.is_locked = True
+        self.db.add(selected)
+
+        # Close the RFQ
+        rfq.status = RfqStatusEnum.closed
+        self.db.add(rfq)
+
+        self.db.commit()
+        self.db.refresh(selected)
+        return selected
 
     def list_quotes_for_rfq(self, rfq_id: int):
         return self.quote_repo.get_by_rfq(rfq_id)

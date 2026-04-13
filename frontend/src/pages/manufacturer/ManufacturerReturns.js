@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getOrders, createDispute, getDisputes } from '../../utils/storage';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
 import DisputeDetailCard, { DisputeStatusBadge } from '../../components/common/DisputeDetailCard';
-import { Plus, RotateCcw, Package, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, RotateCcw, Package, AlertTriangle, ChevronDown, ChevronUp, Upload, X, AlertCircle, Eye } from 'lucide-react';
 
 const REASONS = [
   { value: 'damaged',        label: 'Item Damaged' },
@@ -70,6 +70,11 @@ const ManufacturerReturns = () => {
   const [toast, setToast] = useState(null);
   const [createdRMA, setCreatedRMA] = useState(null);
 
+  // Proof upload state
+  const [proofFiles, setProofFiles] = useState([]); // [{file, preview, type}]
+  const [proofError, setProofError] = useState('');
+  const proofInputRef = useRef(null);
+
   const load = () => {
     setDisputes(getDisputes({ manufacturerEmail: user.email }));
     setOrders(getOrders({ manufacturerEmail: user.email }).filter(o => o.status === 'accepted' || o.status === 'delivered' || o.status === 'shipped'));
@@ -79,9 +84,33 @@ const ManufacturerReturns = () => {
 
   const selectedOrder = orders.find(o => o.id === form.orderId);
 
+  // Proof file handler
+  const handleProofFile = (e) => {
+    const file = e.target.files[0];
+    setProofError('');
+    if (!file) return;
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'];
+    if (!allowed.includes(file.type)) { setProofError('Only images (JPG, PNG, WEBP, GIF) and PDF files are allowed.'); return; }
+    if (file.size > 5 * 1024 * 1024) { setProofError('File size must be under 5 MB.'); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setProofFiles(prev => [...prev, { file, preview: ev.target.result, type: file.type, name: file.name }]);
+    };
+    reader.readAsDataURL(file);
+    if (proofInputRef.current) proofInputRef.current.value = '';
+  };
+
+  const removeProofFile = (idx) => {
+    setProofFiles(prev => prev.filter((_, i) => i !== idx));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.orderId || !form.reason) return;
+    if (proofFiles.length === 0) {
+      setProofError('Please upload at least one proof file (image or PDF) before submitting.');
+      return;
+    }
 
     const dispute = createDispute({
       orderId: form.orderId,
@@ -93,10 +122,17 @@ const ManufacturerReturns = () => {
       reason: form.reason,
       affectedItems: form.affectedItems,
       description: form.description,
+      proofFiles: proofFiles.map(pf => ({
+        fileName: pf.name,
+        fileData: pf.preview,
+        fileType: pf.type,
+      })),
     });
 
     setCreatedRMA(dispute.rmaNumber);
     setForm(EMPTY_FORM);
+    setProofFiles([]);
+    setProofError('');
     setShowForm(false);
     setToast({ message: `Return request raised. RMA: ${dispute.rmaNumber}`, type: 'success' });
     load();
@@ -255,9 +291,60 @@ const ManufacturerReturns = () => {
             />
           </div>
 
+          {/* Proof Upload (Mandatory) */}
+          <div>
+            <label className="block text-sm font-medium text-brand-700 mb-1.5">
+              Upload Proof <span className="text-red-500">*</span>
+            </label>
+            <p className="text-xs text-brand-400 mb-2">Upload images or PDF showing the issue. At least one file is required.</p>
+
+            {/* Uploaded previews */}
+            {proofFiles.length > 0 && (
+              <div className="space-y-2 mb-3">
+                {proofFiles.map((pf, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-2 bg-surface-50 border border-surface-200 rounded-lg">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {pf.type.startsWith('image/') ? (
+                        <img src={pf.preview} alt={pf.name} className="w-10 h-10 rounded object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded bg-red-50 flex items-center justify-center flex-shrink-0">
+                          <Upload size={14} className="text-red-500" />
+                        </div>
+                      )}
+                      <span className="text-xs text-brand-700 truncate">{pf.name}</span>
+                    </div>
+                    <button type="button" onClick={() => removeProofFile(idx)} className="p-1 rounded hover:bg-red-50 text-red-400 hover:text-red-600 flex-shrink-0">
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div
+              onClick={() => proofInputRef.current?.click()}
+              className="flex items-center justify-center gap-2 p-3 border border-dashed border-brand-200 rounded-lg cursor-pointer hover:border-brand-400 hover:bg-brand-50 transition-colors"
+            >
+              <Upload size={15} className="text-brand-400" />
+              <span className="text-sm text-brand-500">Click to upload proof (image/PDF · max 5 MB)</span>
+            </div>
+            <input
+              ref={proofInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+              className="hidden"
+              onChange={handleProofFile}
+            />
+            {proofError && (
+              <div className="flex items-center gap-1.5 mt-1.5 text-red-600 text-xs">
+                <AlertCircle size={12} /> {proofError}
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
-            <button type="submit" className="btn-accent" disabled={!form.orderId || !form.reason}>
+            <button type="submit" className="btn-accent" disabled={!form.orderId || !form.reason || proofFiles.length === 0}>
               <RotateCcw size={14} /> Submit Return Request
             </button>
           </div>

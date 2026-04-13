@@ -35,12 +35,21 @@ class OrderStatusEnum(str, enum.Enum):
     draft = "draft"
     submitted = "submitted"
     confirmed = "confirmed"
+    vendor_review = "vendor_review"    # Waiting for vendor to accept/reject PO
+    accepted = "accepted"              # Vendor accepted the PO
+    rejected = "rejected"              # Vendor rejected the PO
     processing = "processing"
     ready_to_ship = "ready_to_ship"
     shipped = "shipped"
     delivered = "delivered"
     cancelled = "cancelled"
     disputed = "disputed"
+
+
+class QuoteStatusEnum(str, enum.Enum):
+    submitted = "submitted"
+    accepted = "accepted"    # Manufacturer selected this quote
+    rejected = "rejected"    # Manufacturer rejected / chose another
 
 
 class OrderPriorityEnum(str, enum.Enum):

@@ -30,7 +30,6 @@ const ProductCard = ({ p, onEdit, onDelete }) => (
       <div className="flex items-start justify-between mb-2">
         <div className="min-w-0">
           <h3 className="font-semibold text-brand-900 truncate">{p.name}</h3>
-          <p className="text-lg font-display font-bold text-accent-600">${p.price}</p>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0 ml-2">
           <button
@@ -57,7 +56,7 @@ const ProductCard = ({ p, onEdit, onDelete }) => (
 );
 
 // ── Empty file form state ────────────────────────────────────────────────────
-const EMPTY_FORM = { name: '', price: '', description: '', image: '' };
+const EMPTY_FORM = { name: '', description: '', image: '' };
 
 // ── Main Component ───────────────────────────────────────────────────────────
 const VendorProducts = () => {
@@ -121,7 +120,7 @@ const VendorProducts = () => {
 
   // ── Open edit modal ──
   const handleEdit = (p) => {
-    setForm({ name: p.name, price: p.price, description: p.description || '', image: p.image || '' });
+    setForm({ name: p.name, description: p.description || '', image: p.image || '' });
     setImagePreview(p.image || '');
     setEditing(p);
     setShowForm(true);
@@ -250,20 +249,6 @@ const VendorProducts = () => {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="e.g. Steel Bolts M10"
-              required
-            />
-          </div>
-
-          {/* Price */}
-          <div>
-            <label className="block text-sm font-medium text-brand-700 mb-1.5">Price ($)</label>
-            <input
-              type="number"
-              step="0.01"
-              className="input-field"
-              value={form.price}
-              onChange={(e) => setForm({ ...form, price: e.target.value })}
-              placeholder="0.00"
               required
             />
           </div>
