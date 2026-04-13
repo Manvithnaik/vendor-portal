@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getOrders, updateOrderStatus, getRFQs, uploadQuotation, getProducts, markRFQsAsSeen } from '../../utils/storage';
-import { orderApi, quoteApi } from '../../utils/api';
+import { rfqService } from '../../services/rfqService';
+import { quoteService } from '../../services/quoteService';
+import { orderService } from '../../services/orderService';
 import StatusBadge from '../../components/common/StatusBadge';
 import Toast from '../../components/common/Toast';
 import Modal from '../../components/common/Modal';
@@ -74,12 +75,17 @@ const VendorOrders = () => {
   const [rejectOrder, setRejectOrder] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  const load = () => {
-    setOrders(getOrders({ vendorEmail: user.email }));
-    const myProducts = getProducts(user.email);
-    const myProductIds = myProducts.map(p => p.id);
-    const allRFQs = getRFQs({ vendorEmail: user.email });
-    setRfqs(allRFQs);
+  const load = async () => {
+    try {
+      const [orderRes, rfqRes] = await Promise.all([
+        orderService.listOrders(),
+        rfqService.listRFQs()
+      ]);
+      setOrders(orderRes?.data || []);
+      setRfqs(rfqRes?.data || []);
+    } catch (e) {
+      setToast({ message: e.message || 'Failed to load data', type: 'error' });
+    }
   };
 
   useEffect(() => { load(); }, []);
@@ -87,7 +93,7 @@ const VendorOrders = () => {
   // ── Order actions ──
   const handleOrderAction = async (id, action) => {
     try {
-      await orderApi.vendorRespond(id, { action });
+      await orderService.respondToOrder(id, action);
       setToast({ message: `Order ${action === 'accept' ? 'accepted' : 'rejected'}.`, type: 'success' });
       setViewOrder(null);
       load();
@@ -99,7 +105,7 @@ const VendorOrders = () => {
   const handleRejectSubmit = async () => {
     if (!rejectReason.trim()) return;
     try {
-      await orderApi.vendorRespond(rejectOrder.id, { action: 'reject', reason: rejectReason.trim() });
+      await orderService.respondToOrder(rejectOrder.id, 'reject', rejectReason.trim());
       setToast({ message: 'Order rejected.', type: 'success' });
       setRejectOrder(null);
       setRejectReason('');
@@ -136,31 +142,30 @@ const VendorOrders = () => {
     reader.readAsDataURL(file);
   };
 
-  // ── Upload quotation ──
-  const handleUpload = (e) => {
+  const handleUpload = async (e) => {
     e.preventDefault();
     if (!pdfPreview) { setUploadError('Please select a PDF file.'); return; }
 
     setUploading(true);
-    uploadQuotation({
-      rfqId: uploadRFQ.id,
-      productId: uploadRFQ.productId,
-      productName: uploadRFQ.productName,
-      vendorEmail: user.email,
-      vendorName: user.name || user.email,
-      manufacturerEmail: uploadRFQ.manufacturerEmail,
-      manufacturerName: uploadRFQ.manufacturerName,
-      fileName: pdfFile.name,
-      fileData: pdfPreview,
-    });
-
-    setToast({ message: 'Quotation PDF uploaded successfully!', type: 'success' });
-    setUploadRFQ(null);
-    setPdfFile(null);
-    setPdfPreview('');
-    setUploadError('');
-    setUploading(false);
-    load();
+    try {
+      await quoteService.submitQuote({
+        rfq_id: uploadRFQ.id,
+        price: 0,
+        valid_until: null,
+        file_name: pdfFile.name,
+        file_data: pdfPreview
+      });
+      setToast({ message: 'Quotation PDF uploaded successfully!', type: 'success' });
+      setUploadRFQ(null);
+      setPdfFile(null);
+      setPdfPreview('');
+      setUploadError('');
+      load();
+    } catch (error) {
+      setToast({ message: error.message || 'Failed to upload quotation.', type: 'error' });
+    } finally {
+      setUploading(false);
+    }
   };
 
   const resetUploadModal = () => {
@@ -173,11 +178,9 @@ const VendorOrders = () => {
 
   const pendingRFQs = rfqs.filter(r => r.status === 'open').length;
 
-  // Mark all RFQs as seen when RFQ tab is active
+  // Optional: Add seen mechanism via backend if supported in future
   useEffect(() => {
-    if (tab === 'rfqs' && rfqs.length > 0 && user?.email) {
-      markRFQsAsSeen(user.email, rfqs.map(r => r.id));
-    }
+    // Left empty since we migrated from localStorage
   }, [tab, rfqs, user?.email]);
 
   return (

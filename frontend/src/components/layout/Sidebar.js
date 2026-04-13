@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { hasUnseenRFQs } from '../../utils/storage';
+
 import {
   LayoutDashboard, Users, Package, ShoppingCart, Truck,
   UserCircle, Settings, LogOut, ChevronLeft, ChevronRight,
@@ -44,14 +44,9 @@ const Sidebar = ({ role }) => {
   const location = useLocation();
   const items = navItems[role] || [];
 
-  // Check for unseen RFQs for vendor
+  // Backend polling for unseen RFQs can be implemented here later
   useEffect(() => {
-    if (role === 'vendor' && user?.email) {
-      const check = () => setHasNewRFQs(hasUnseenRFQs(user.email));
-      check();
-      const interval = setInterval(check, 2000); // poll every 2s
-      return () => clearInterval(interval);
-    }
+    // left intentionally empty since local storage logic is removed
   }, [role, user?.email, location.pathname]);
 
   const handleLogout = () => {

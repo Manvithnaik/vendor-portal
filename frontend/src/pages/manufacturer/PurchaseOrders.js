@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getOrders } from '../../utils/storage';
+import { orderService } from '../../services/orderService';
 import StatusBadge from '../../components/common/StatusBadge';
+import Toast from '../../components/common/Toast';
 import Modal from '../../components/common/Modal';
 import { Eye, FileText, Download } from 'lucide-react';
 
@@ -9,13 +10,24 @@ const PurchaseOrders = () => {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [viewOrder, setViewOrder] = useState(null);
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
-    setOrders(getOrders({ manufacturerEmail: user.email }));
-  }, []);
+    const loadOrders = async () => {
+      try {
+        const response = await orderService.listOrders();
+        setOrders(response?.data || []);
+      } catch (err) {
+        setToast({ message: err.message || 'Failed to load orders', type: 'error' });
+      }
+    };
+    loadOrders();
+  }, [user.email]);
+
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
       <div>
         <h1 className="font-display font-bold text-2xl text-brand-900">Purchase Orders</h1>
         <p className="text-sm text-brand-400 mt-1">All orders you've placed with vendors.</p>

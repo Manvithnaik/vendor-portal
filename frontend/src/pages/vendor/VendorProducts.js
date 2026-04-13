@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getProducts, addProduct, updateProduct, deleteProduct } from '../../utils/storage';
+import { productService } from '../../services/productService';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
 import { Plus, Edit3, Trash2, Package, ImagePlus, X, AlertCircle } from 'lucide-react';
@@ -72,7 +72,14 @@ const VendorProducts = () => {
   const [imageError, setImageError] = useState('');
   const imageInputRef = useRef(null);
 
-  const load = () => setProducts(getProducts(user.email));
+  const load = async () => {
+    try {
+      const response = await productService.listProducts();
+      setProducts(response?.data || []);
+    } catch (e) {
+      setToast({ message: e.message || 'Failed to load products', type: 'error' });
+    }
+  };
   useEffect(() => { load(); }, []);
 
   const resetForm = () => {
@@ -127,23 +134,31 @@ const VendorProducts = () => {
   };
 
   // ── Submit ──
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (editing) {
-      updateProduct(editing.id, form);
-      setToast({ message: 'Product updated.', type: 'success' });
-    } else {
-      addProduct({ ...form, vendorEmail: user.email, vendorName: user.name || user.email });
-      setToast({ message: 'Product added.', type: 'success' });
+    try {
+      if (editing) {
+        await productService.updateProduct(editing.id, form);
+        setToast({ message: 'Product updated.', type: 'success' });
+      } else {
+        await productService.createProduct({ ...form });
+        setToast({ message: 'Product added.', type: 'success' });
+      }
+      resetForm();
+      load();
+    } catch (e) {
+      setToast({ message: e.message || 'Failed to save product', type: 'error' });
     }
-    resetForm();
-    load();
   };
 
-  const handleDelete = (id) => {
-    deleteProduct(id);
-    setToast({ message: 'Product deleted.', type: 'success' });
-    load();
+  const handleDelete = async (id) => {
+    try {
+      await productService.deleteProduct(id);
+      setToast({ message: 'Product deleted.', type: 'success' });
+      load();
+    } catch (e) {
+      setToast({ message: e.message || 'Failed to delete product', type: 'error' });
+    }
   };
 
   return (

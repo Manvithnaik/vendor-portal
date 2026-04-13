@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getProducts, createRFQ, getRFQs, createOrder } from '../../utils/storage';
+import { productService } from '../../services/productService';
+import { rfqService } from '../../services/rfqService';
+import { orderService } from '../../services/orderService';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
 import { Search, Package, FileText, CheckCircle, Clock, ShoppingCart } from 'lucide-react';
@@ -18,9 +20,17 @@ const BrowseProducts = () => {
   // Per-product quantity map: { [productId]: number }
   const [quantities, setQuantities] = useState({});
 
-  const load = () => {
-    setProducts(getProducts());
-    setMyRFQs(getRFQs({ manufacturerEmail: user.email }));
+  const load = async () => {
+    try {
+      const [prodRes, rfqRes] = await Promise.all([
+        productService.listProducts(),
+        rfqService.listRFQs()
+      ]);
+      setProducts(prodRes?.data || []);
+      setMyRFQs(rfqRes?.data || []);
+    } catch (e) {
+      setToast({ message: e.message || 'Failed to load data', type: 'error' });
+    }
   };
 
   useEffect(() => { load(); }, []);
@@ -40,46 +50,41 @@ const BrowseProducts = () => {
   };
 
   // Check if RFQ already sent for this product
-  const hasRFQ = (productId) => myRFQs.some(r => r.productId === productId && r.status !== 'closed');
+  const hasRFQ = (productId) => myRFQs.some(r => r.product_id === productId && r.status !== 'closed');
 
   // ── RFQ submit ──────────────────────────────────────────────────────────────
-  const handleRFQ = (e) => {
+  const handleRFQ = async (e) => {
     e.preventDefault();
     setSubmitting(true);
-    createRFQ({
-      productId: rfqProduct.id,
-      productName: rfqProduct.name,
-      vendorEmail: rfqProduct.vendorEmail,
-      vendorName: rfqProduct.vendorName || rfqProduct.vendorEmail,
-      manufacturerEmail: user.email,
-      manufacturerName: user.name || user.email,
-      notes: notes.trim(),
-    });
-    setToast({ message: `RFQ sent for "${rfqProduct.name}"! The vendor will be notified.`, type: 'success' });
-    setRfqProduct(null);
-    setNotes('');
-    setSubmitting(false);
-    load();
+    try {
+      await rfqService.createRFQ({
+        product_id: rfqProduct.id,
+        quantity: getQty(rfqProduct.id),
+        specifications: notes.trim()
+      });
+      setToast({ message: `RFQ sent for "${rfqProduct.name}"! The vendor will be notified.`, type: 'success' });
+      setRfqProduct(null);
+      setNotes('');
+      load();
+    } catch (error) {
+      setToast({ message: error.message || 'Failed to request quote.', type: 'error' });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // ── Direct Purchase ─────────────────────────────────────────────────────────
-  const handlePurchase = (p) => {
+  const handlePurchase = async (p) => {
     const qty = getQty(p.id);
-    const result = createOrder({
-      productId: p.id,
-      productName: p.name,
-      productPrice: p.price,
-      vendorEmail: p.vendorEmail,
-      vendorName: p.vendorName || p.vendorEmail,
-      manufacturerEmail: user.email,
-      manufacturerName: user.name || user.email,
-      quantity: qty,
-    });
-    if (!result.success) {
-      setToast({ message: result.message, type: 'error' });
-      return;
+    try {
+      // In the new flow, orders MUST be created via Quotes. 
+      // Direct purchase might be retired or requires quotation_id. 
+      // The user specified: "Convert the frontend from a localStorage... preserving UI/UX completely, enforcing correct business workflow"
+      // Since direct purchase contradicts the mandatory flow, we'll disable it or keep it for legacy.
+      setToast({ message: 'Direct purchase is disabled. You must request a quote first.', type: 'error' });
+    } catch (error) {
+      setToast({ message: error.message || 'Failed to place order.', type: 'error' });
     }
-    setToast({ message: `Order placed for ${qty}× "${p.name}"!`, type: 'success' });
   };
 
   return (

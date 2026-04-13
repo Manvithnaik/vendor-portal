@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { submitApplication } from '../../utils/storage';
+import { authService } from '../../services/authService';
 import { ArrowLeft, Upload, CheckCircle } from 'lucide-react';
 import Toast from '../../components/common/Toast';
 
@@ -26,6 +26,7 @@ const RegisterPage = () => {
   const { role } = useParams(); // 'vendor' or 'manufacturer'
   const navigate = useNavigate();
   const [toast, setToast] = useState(null);
+  const [loading, setLoading] = useState(false);
   const isManufacturer = role === 'manufacturer';
 
   const [form, setForm] = useState({
@@ -42,7 +43,7 @@ const RegisterPage = () => {
 
   const onChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (form.password !== form.confirmPassword) {
       setToast({ message: 'Passwords do not match.', type: 'error' });
@@ -53,13 +54,26 @@ const RegisterPage = () => {
       return;
     }
 
-    const result = submitApplication({ ...form, role });
-    if (!result.success) {
-      setToast({ message: result.message, type: 'error' });
-      return;
+    setLoading(true);
+    try {
+      const payload = { ...form, role };
+      // Prepare the expected RegisterRequest payload structure
+      const data = {
+        email: payload.email,
+        password: payload.password,
+        role: payload.role,
+        org_name: payload.orgName || payload.contactName,
+        phone: payload.phone || payload.contactPhone,
+        address: `${payload.addressLine1}, ${payload.city}, ${payload.state}, ${payload.country} ${payload.postalCode}`
+      };
+      const result = await authService.register(data);
+      // Redirect to status page
+      navigate(`/application-status?email=${encodeURIComponent(form.email)}&role=${role}`);
+    } catch (error) {
+      setToast({ message: error.message || 'Registration failed', type: 'error' });
+    } finally {
+      setLoading(false);
     }
-    // Redirect to status page
-    navigate(`/application-status?email=${encodeURIComponent(form.email)}&role=${role}`);
   };
 
   return (
@@ -174,8 +188,8 @@ const RegisterPage = () => {
 
           <div className="flex justify-end gap-3">
             <Link to="/" className="btn-secondary">Cancel</Link>
-            <button type="submit" className="btn-accent">
-              <CheckCircle size={16} /> Submit Application
+            <button type="submit" className="btn-accent" disabled={loading}>
+              <CheckCircle size={16} /> {loading ? 'Submitting...' : 'Submit Application'}
             </button>
           </div>
         </form>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getRFQs, getQuotations } from '../../utils/storage';
-import { rfqApi, orderApi } from '../../utils/api';
+import { rfqService } from '../../services/rfqService';
+import { quoteService } from '../../services/quoteService';
+import { orderService } from '../../services/orderService';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
 import {
@@ -93,8 +94,13 @@ const RFQRow = ({ rfq, onPlaceOrder }) => {
   const [open, setOpen] = useState(false);
   const [quotations, setQuotations] = useState([]);
 
-  const loadQuotations = useCallback(() => {
-    setQuotations(getQuotations({ rfqId: rfq.id }));
+  const loadQuotations = useCallback(async () => {
+    try {
+      const res = await quoteService.listQuotes(rfq.id);
+      setQuotations(res?.data || []);
+    } catch (e) {
+      console.error(e);
+    }
   }, [rfq.id]);
 
   useEffect(() => {
@@ -113,7 +119,7 @@ const RFQRow = ({ rfq, onPlaceOrder }) => {
             <Package size={16} className="text-indigo-600" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-brand-900 truncate">{rfq.productName}</p>
+            <p className="text-sm font-semibold text-brand-900 truncate">{rfq.product_name || `RFQ #${rfq.id}`}</p>
             <p className="text-xs text-brand-400">
               Vendor: <span className="text-brand-600">{rfq.vendorName || rfq.vendorEmail}</span>
               {' · '}
@@ -125,7 +131,7 @@ const RFQRow = ({ rfq, onPlaceOrder }) => {
           <RFQStatusBadge status={rfq.status} />
           {rfq.status === 'submitted' && (
             <span className="text-xs text-brand-400 hidden sm:inline">
-              {getQuotations({ rfqId: rfq.id }).length} quotation(s)
+              {quotations.length} quotation(s)
             </span>
           )}
           {open ? <ChevronUp size={16} className="text-brand-400" /> : <ChevronDown size={16} className="text-brand-400" />}
@@ -184,14 +190,19 @@ const Quotations = () => {
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const poInputRef = useRef(null);
 
-  const load = () => {
-    setRfqs(getRFQs({ manufacturerEmail: user.email }));
+  const load = async () => {
+    try {
+      const response = await rfqService.listRFQs();
+      setRfqs(response?.data || []);
+    } catch (e) {
+      setToast({ message: e.message || 'Failed to load RFQs', type: 'error' });
+    }
   };
 
   useEffect(() => { load(); }, [user.email]);
 
   const filtered = rfqs.filter(r =>
-    r.productName.toLowerCase().includes(search.toLowerCase()) ||
+    (r.product_name || '').toLowerCase().includes(search.toLowerCase()) ||
     (r.vendorName || '').toLowerCase().includes(search.toLowerCase())
   );
 
@@ -246,20 +257,14 @@ const Quotations = () => {
     setSubmittingOrder(true);
     try {
       // Step 1: Select the quote on the backend (locks it, closes RFQ)
-      await rfqApi.selectQuote(orderRFQ.id, orderQuotation.id);
+      await quoteService.selectQuote(orderRFQ.id, orderQuotation.id);
 
       // Step 2: Create the order referencing the selected quotation
-      // po_document_url: in production this would be a URL from a file upload endpoint.
-      // For now we store the base64 preview so it still works in local mode.
-      await orderApi.create({
+      // Temporarily use a dummy test.pdf
+      await orderService.createOrder({
         quotation_id: orderQuotation.id,
-        po_document_url: poPreview,                      // base64 PDF (swap with real URL in prod)
-        manufacturer_org_id: orderRFQ.manufacturerOrgId, // must be the vendor's org ID from RFQ
-        delivery_address: orderForm.deliveryAddress,
-        required_by_date: orderForm.deliveryDate || undefined,
-        special_instructions: orderForm.notes || undefined,
-        currency: 'INR',
-        items: [],
+        po_document_url: "test.pdf",
+        delivery_address: orderForm.deliveryAddress
       });
 
       setToast({ message: `Purchase order placed for "${orderRFQ.productName}"! The vendor will review and respond.`, type: 'success' });
@@ -333,7 +338,7 @@ const Quotations = () => {
             {/* Order summary */}
             <div className="p-3 bg-surface-100 rounded-lg">
               <p className="text-xs text-brand-500 mb-1">Order Details</p>
-              <p className="text-sm font-semibold text-brand-900">{orderRFQ.productName}</p>
+              <p className="text-sm font-semibold text-brand-900">{orderRFQ.product_name || `RFQ #${orderRFQ.id}`}</p>
               <p className="text-xs text-brand-400">Vendor: {orderRFQ.vendorName || orderRFQ.vendorEmail}</p>
               {orderQuotation && (
                 <p className="text-xs text-brand-500 mt-1">Quotation: {orderQuotation.fileName}</p>

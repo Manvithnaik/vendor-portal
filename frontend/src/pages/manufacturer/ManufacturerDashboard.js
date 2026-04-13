@@ -1,13 +1,33 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { getProducts, getOrders } from '../../utils/storage';
+import { productService } from '../../services/productService';
+import { orderService } from '../../services/orderService';
+import Toast from '../../components/common/Toast';
 import { Search, ShoppingCart, Truck, Package, ArrowRight } from 'lucide-react';
 
 const ManufacturerDashboard = () => {
   const { user } = useAuth();
-  const allProducts = getProducts();
-  const orders = getOrders({ manufacturerEmail: user.email });
+  const [allProducts, setAllProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [prodRes, orderRes] = await Promise.all([
+          productService.listProducts(),
+          orderService.listOrders()
+        ]);
+        setAllProducts(prodRes?.data || []);
+        setOrders(orderRes?.data || []);
+      } catch (err) {
+        setToast({ message: err.message || 'Failed to load dashboard data', type: 'error' });
+      }
+    };
+    loadData();
+  }, [user.email]);
+
   const activeOrders = orders.filter(o => !['delivered', 'rejected'].includes(o.status));
 
   const cards = [
@@ -18,6 +38,7 @@ const ManufacturerDashboard = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
       <div>
         <h1 className="font-display font-bold text-2xl text-brand-900">Welcome back, {user.name || 'Manufacturer'}</h1>
         <p className="text-sm text-brand-400 mt-1">Browse products and manage your orders.</p>

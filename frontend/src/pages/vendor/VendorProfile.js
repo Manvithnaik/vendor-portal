@@ -1,19 +1,34 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getApplicationByEmail } from '../../utils/storage';
 import { UserCircle, Mail, Phone, MapPin, Building, Factory } from 'lucide-react';
 
 const VendorProfile = () => {
   const { user } = useAuth();
-  const app = getApplicationByEmail(user.email, 'vendor');
+  
+  // Map API user object to the expected structure
+  const app = user ? {
+    orgName: user.org_name || `Org #${user.org_id}`,
+    contactName: user.full_name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.name,
+    contactEmail: user.email,
+    contactPhone: user.phone,
+    email: user.email,
+    industryType: user.industry_type || '',
+    factoryAddress: user.factory_address || '',
+    addressLine1: user.address || '',
+    city: user.city || '',
+    state: user.state || '',
+    country: user.country || '',
+    postalCode: user.postal_code || ''
+  } : null;
 
   if (!app) {
     return (
       <div className="card p-8 text-center">
-        <p className="text-brand-400">No application data found.</p>
+        <p className="text-brand-400">Loading profile data...</p>
       </div>
     );
   }
+
 
   const sections = [
     { title: 'Organization', icon: Building, fields: [

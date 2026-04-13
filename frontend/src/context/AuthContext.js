@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { getCurrentUser, logout as doLogout, login as doLogin } from '../utils/storage';
+import { authService } from '../services/authService';
 
 const AuthContext = createContext(null);
 
@@ -8,19 +8,40 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const u = getCurrentUser();
-    if (u) setUser(u);
-    setLoading(false);
+    const initAuth = async () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const result = await authService.getCurrentUser();
+          if (result && result.data) {
+            setUser(result.data);
+          }
+        } catch (error) {
+          console.error("Failed to fetch current user", error);
+          authService.logout();
+        }
+      }
+      setLoading(false);
+    };
+    initAuth();
   }, []);
 
-  const login = (email, password, role) => {
-    const result = doLogin(email, password, role);
-    if (result.success) setUser(result.user);
-    return result;
+  const login = async (email, password, role) => {
+    try {
+      const result = await authService.login(email, password, role);
+      // Backend standard response format { status: "success", data: { user: {...}, token: "..." } }
+      if (result && result.data && result.data.user) {
+        setUser(result.data.user);
+        return { success: true, user: result.data.user };
+      }
+      return { success: false, message: result.message || 'Login failed' };
+    } catch (error) {
+      return { success: false, message: error.message || 'Login failed' };
+    }
   };
 
   const logout = () => {
-    doLogout();
+    authService.logout();
     setUser(null);
   };
 

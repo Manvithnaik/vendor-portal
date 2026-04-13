@@ -1,8 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
-import { seedData } from './utils/storage';
-
 // Layouts
 import DashboardLayout from './components/layout/DashboardLayout';
 
@@ -36,9 +34,6 @@ import Quotations from './pages/manufacturer/Quotations';
 import PurchaseOrders from './pages/manufacturer/PurchaseOrders';
 import OrderTracking from './pages/manufacturer/OrderTracking';
 import ManufacturerReturns from './pages/manufacturer/ManufacturerReturns';
-
-// Seed default admin on first load
-seedData();
 
 function App() {
   return (
