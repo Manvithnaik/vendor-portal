@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.api.deps import get_current_user
+from app.models.organization import Organization
+from app.models.enums import OrgTypeEnum
 from app.schemas.vendor_portal import (
     RFQCreate, RFQUpdate, RFQResponse,
     QuoteCreate, QuoteResponse, QuoteSelectResponse,
@@ -24,10 +26,15 @@ def create_rfq(data: RFQCreate, db: Session = Depends(get_db), current_user=Depe
     return success_response("RFQ created.", RFQResponse.model_validate(rfq))
 
 @router.get("/rfq", response_model=APIResponse)
-def list_rfq(org_id: int = None, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def list_rfq(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     svc = RFQService(db)
-    target_org = org_id if org_id else current_user.org_id
-    rfqs = svc.list_by_org(target_org)
+    org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
+    # Vendors (org_type=manufacturer) see RFQs broadcast to them or open to all
+    # Buyers (org_type=customer)  see RFQs they created
+    if org and org.org_type == OrgTypeEnum.manufacturer:
+        rfqs = svc.rfq_repo.get_visible_to_vendor(current_user.org_id)
+    else:
+        rfqs = svc.list_by_org(current_user.org_id)
     return success_response("RFQs retrieved.", [RFQResponse.model_validate(r) for r in rfqs])
 
 @router.put("/rfq/{rfq_id}", response_model=APIResponse)

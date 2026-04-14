@@ -1,5 +1,6 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, exists
 from app.models.vendor_portal import RFQ, RFQBroadcast, Quote
 from app.repositories.base import BaseRepository
 
@@ -12,6 +13,26 @@ class RFQRepository(BaseRepository[RFQ]):
         return (
             self.db.query(RFQ)
             .filter(RFQ.org_id == org_id, RFQ.deleted_at.is_(None))
+            .order_by(RFQ.created_at.desc())
+            .all()
+        )
+
+    def get_visible_to_vendor(self, manufacturer_org_id: int) -> List[RFQ]:
+        """Returns RFQs that a vendor (manufacturer org) should see:
+        1. RFQs specifically broadcast to this org, OR
+        2. Open RFQs with no broadcast targeting (broadcast_to_org_ids was [])
+        """
+        has_any_broadcast = exists().where(RFQBroadcast.rfq_id == RFQ.id)
+        targeted_to_me = exists().where(
+            RFQBroadcast.rfq_id == RFQ.id,
+            RFQBroadcast.manufacturer_org_id == manufacturer_org_id
+        )
+        return (
+            self.db.query(RFQ)
+            .filter(
+                RFQ.deleted_at.is_(None),
+                or_(targeted_to_me, ~has_any_broadcast)  # broadcast to me, or open to all
+            )
             .order_by(RFQ.created_at.desc())
             .all()
         )
