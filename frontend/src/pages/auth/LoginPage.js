@@ -10,12 +10,16 @@ const LoginPage = () => {
   const [role, setRole] = useState('vendor');
   const [showPw, setShowPw] = useState(false);
   const [toast, setToast] = useState(null);
+  const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const result = login(email, password, role);
+    setLoading(true);
+    const result = await login(email, password, role);
+    setLoading(false);
+
     if (!result.success) {
       setToast({ message: result.message, type: 'error' });
       return;
@@ -105,8 +109,8 @@ const LoginPage = () => {
               </div>
             </div>
 
-            <button type="submit" className="btn-primary w-full py-3">
-              Sign in
+            <button type="submit" className="btn-primary w-full py-3" disabled={loading}>
+              {loading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
 

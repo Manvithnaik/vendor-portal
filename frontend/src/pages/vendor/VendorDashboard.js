@@ -1,14 +1,34 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { getProducts, getOrders } from '../../utils/storage';
+import { productService } from '../../services/productService';
+import { orderService } from '../../services/orderService';
+import Toast from '../../components/common/Toast';
 import { Package, ShoppingCart, Truck, ArrowRight } from 'lucide-react';
 
 const VendorDashboard = () => {
   const { user } = useAuth();
-  const products = getProducts(user.email);
-  const orders = getOrders({ vendorEmail: user.email });
-  const pendingOrders = orders.filter(o => o.status === 'pending');
+  const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [prodRes, orderRes] = await Promise.all([
+          productService.listProducts(),
+          orderService.listOrders({ as_customer: false })
+        ]);
+        setProducts(prodRes?.data || []);
+        setOrders(orderRes?.data || []);
+      } catch (err) {
+        setToast({ message: err.message || 'Failed to load dashboard data', type: 'error' });
+      }
+    };
+    loadData();
+  }, [user.email]);
+
+  const pendingOrders = orders.filter(o => o.status === 'vendor_review');
   const shipped = orders.filter(o => o.status === 'shipped');
 
   const cards = [
@@ -17,8 +37,10 @@ const VendorDashboard = () => {
     { label: 'Shipped', value: shipped.length, icon: Truck, to: '/vendor/shipping', color: 'bg-emerald-50 text-emerald-600' },
   ];
 
+
   return (
     <div className="space-y-6 animate-fade-in">
+      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
       <div>
         <h1 className="font-display font-bold text-2xl text-brand-900">Welcome back, {user.name || 'Vendor'}</h1>
         <p className="text-sm text-brand-400 mt-1">Here's an overview of your account.</p>

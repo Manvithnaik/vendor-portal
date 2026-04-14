@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight, Shield, Zap, BarChart3, Globe, ChevronDown,
@@ -20,6 +20,20 @@ const stats = [
 
 const HomePage = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setDropdownOpen(false);
+      }
+    };
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [dropdownOpen]);
 
   return (
     <div className="min-h-screen bg-surface-50">
@@ -35,20 +49,19 @@ const HomePage = () => {
           <div className="flex items-center gap-3">
             <Link to="/login" className="btn-ghost">Log in</Link>
             {/* Get Started dropdown */}
-            <div className="relative">
+            <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setDropdownOpen(!dropdownOpen)}
-                onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
                 className="btn-primary"
               >
                 Get Started <ChevronDown size={14} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
               </button>
               {dropdownOpen && (
                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-elevated border border-surface-300 overflow-hidden animate-fade-in">
-                  <Link to="/register/vendor" className="block px-4 py-3 text-sm font-medium text-brand-700 hover:bg-brand-50 transition-colors">
+                  <Link to="/register/vendor" onClick={() => setDropdownOpen(false)} className="block px-4 py-3 text-sm font-medium text-brand-700 hover:bg-brand-50 transition-colors">
                     Register as Vendor
                   </Link>
-                  <Link to="/register/manufacturer" className="block px-4 py-3 text-sm font-medium text-brand-700 hover:bg-brand-50 transition-colors border-t border-surface-200">
+                  <Link to="/register/manufacturer" onClick={() => setDropdownOpen(false)} className="block px-4 py-3 text-sm font-medium text-brand-700 hover:bg-brand-50 transition-colors border-t border-surface-200">
                     Register as Manufacturer
                   </Link>
                 </div>
@@ -79,11 +92,8 @@ const HomePage = () => {
               The all-in-one portal for managing vendor registrations, product catalogs, purchase orders, and shipment tracking.
             </p>
             <div className="flex flex-wrap gap-3 animate-fade-in animate-fade-in-delay-2">
-              <Link to="/register/vendor" className="btn-accent text-base px-6 py-3">
-                Start as Vendor <ArrowRight size={16} />
-              </Link>
-              <Link to="/register/manufacturer" className="px-6 py-3 bg-white/10 text-white font-medium rounded-lg hover:bg-white/20 transition-all text-base backdrop-blur-sm">
-                Start as Manufacturer
+              <Link to="/login" className="btn-accent text-base px-6 py-3">
+                Log In <ArrowRight size={16} />
               </Link>
             </div>
           </div>

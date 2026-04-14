@@ -17,7 +17,7 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.models.enums import (
     VerifyStatusEnum, RfqStatusEnum, PayoutStatusEnum,
-    TicketStatusEnum, RefundStatusEnum,
+    TicketStatusEnum, RefundStatusEnum, QuoteStatusEnum,
     CrmInteractionEnum, CrmTaskTypeEnum, CrmTaskStatusEnum, PriorityEnum,
 )
 
@@ -200,8 +200,13 @@ class Quote(Base):
     compliance_notes = Column(Text)
     version = Column(SmallInteger, nullable=False, default=1)
     is_locked = Column(Boolean, nullable=False, default=False)
+    status = Column(
+        SAEnum(QuoteStatusEnum, name="quote_status_enum"),
+        nullable=False,
+        default=QuoteStatusEnum.submitted,
+    )  # NEW: submitted → accepted/rejected by manufacturer
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    deleted_at = Column(TIMESTAMP(timezone=True))
+    deleted_at = Column(TIMESTAMP(timezone=True))  # soft-delete; required by rfq_repo filter
 
     rfq = relationship("RFQ", back_populates="quotes")
     manufacturer_org = relationship("Organization", foreign_keys=[manufacturer_org_id])

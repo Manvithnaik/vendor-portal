@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getProducts, createRFQ, getRFQs, createOrder } from '../../utils/storage';
+import { productService } from '../../services/productService';
+import { rfqService } from '../../services/rfqService';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
 import { Search, Package, FileText, CheckCircle, Clock, ShoppingCart } from 'lucide-react';
@@ -18,9 +19,17 @@ const BrowseProducts = () => {
   // Per-product quantity map: { [productId]: number }
   const [quantities, setQuantities] = useState({});
 
-  const load = () => {
-    setProducts(getProducts());
-    setMyRFQs(getRFQs({ manufacturerEmail: user.email }));
+  const load = async () => {
+    try {
+      const [prodRes, rfqRes] = await Promise.all([
+        productService.listProducts(),
+        rfqService.listRFQs()
+      ]);
+      setProducts(prodRes?.data || []);
+      setMyRFQs(rfqRes?.data || []);
+    } catch (e) {
+      setToast({ message: e.message || 'Failed to load data', type: 'error' });
+    }
   };
 
   useEffect(() => { load(); }, []);
@@ -40,42 +49,45 @@ const BrowseProducts = () => {
   };
 
   // Check if RFQ already sent for this product
-  const hasRFQ = (productId) => myRFQs.some(r => r.productId === productId && r.status !== 'closed');
+  const hasRFQ = (productId) => myRFQs.some(r => r.product_id === productId && r.status !== 'closed');
 
   // ── RFQ submit ──────────────────────────────────────────────────────────────
-  const handleRFQ = (e) => {
+  const handleRFQ = async (e) => {
     e.preventDefault();
     setSubmitting(true);
-    createRFQ({
-      productId: rfqProduct.id,
-      productName: rfqProduct.name,
-      vendorEmail: rfqProduct.vendorEmail,
-      vendorName: rfqProduct.vendorName || rfqProduct.vendorEmail,
-      manufacturerEmail: user.email,
-      manufacturerName: user.name || user.email,
-      notes: notes.trim(),
-    });
-    setToast({ message: `RFQ sent for "${rfqProduct.name}"! The vendor will be notified.`, type: 'success' });
-    setRfqProduct(null);
-    setNotes('');
-    setSubmitting(false);
-    load();
+    // deadline = 30 days from now (ISO string)
+    const deadline = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    try {
+      await rfqService.createRFQ({
+        title:       `RFQ for ${rfqProduct.name}`,
+        description: notes.trim() || undefined,
+        deadline,
+        category_id: rfqProduct.category_id || undefined,
+        broadcast_to_org_ids: rfqProduct.manufacturer_org_id ? [rfqProduct.manufacturer_org_id] : [],
+      });
+      setToast({ message: `RFQ sent for "${rfqProduct.name}"! The vendor will be notified.`, type: 'success' });
+      setRfqProduct(null);
+      setNotes('');
+      load();
+    } catch (error) {
+      setToast({ message: error.message || 'Failed to request quote.', type: 'error' });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // ── Direct Purchase ─────────────────────────────────────────────────────────
-  const handlePurchase = (p) => {
+  const handlePurchase = async (p) => {
     const qty = getQty(p.id);
-    createOrder({
-      productId: p.id,
-      productName: p.name,
-      productPrice: p.price,
-      vendorEmail: p.vendorEmail,
-      vendorName: p.vendorName || p.vendorEmail,
-      manufacturerEmail: user.email,
-      manufacturerName: user.name || user.email,
-      quantity: qty,
-    });
-    setToast({ message: `Order placed for ${qty}× "${p.name}"!`, type: 'success' });
+    try {
+      // In the new flow, orders MUST be created via Quotes. 
+      // Direct purchase might be retired or requires quotation_id. 
+      // The user specified: "Convert the frontend from a localStorage... preserving UI/UX completely, enforcing correct business workflow"
+      // Since direct purchase contradicts the mandatory flow, we'll disable it or keep it for legacy.
+      setToast({ message: 'Direct purchase is disabled. You must request a quote first.', type: 'error' });
+    } catch (error) {
+      setToast({ message: error.message || 'Failed to place order.', type: 'error' });
+    }
   };
 
   return (
@@ -124,18 +136,6 @@ const BrowseProducts = () => {
                   {p.description || 'No description provided.'}
                 </p>
 
-                {/* Quantity input */}
-                <div className="mb-3">
-                  <label className="block text-xs font-medium text-brand-600 mb-1">Quantity</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={qty}
-                    onChange={(e) => setQty(p.id, e.target.value)}
-                    className="input-field py-2 text-sm"
-                  />
-                </div>
-
                 {/* Action buttons */}
                 <div className="space-y-2">
                   {/* RFQ button */}
@@ -153,15 +153,6 @@ const BrowseProducts = () => {
                       Request for Quotation (RFQ)
                     </button>
                   )}
-
-                  {/* Purchase button */}
-                  <button
-                    onClick={() => handlePurchase(p)}
-                    className="btn-primary w-full text-xs"
-                  >
-                    <ShoppingCart size={14} />
-                    Purchase
-                  </button>
                 </div>
               </div>
             );

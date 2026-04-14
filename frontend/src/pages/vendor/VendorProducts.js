@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getProducts, addProduct, updateProduct, deleteProduct } from '../../utils/storage';
+import { productService } from '../../services/productService';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
 import { Plus, Edit3, Trash2, Package, ImagePlus, X, AlertCircle } from 'lucide-react';
@@ -30,7 +30,6 @@ const ProductCard = ({ p, onEdit, onDelete }) => (
       <div className="flex items-start justify-between mb-2">
         <div className="min-w-0">
           <h3 className="font-semibold text-brand-900 truncate">{p.name}</h3>
-          <p className="text-lg font-display font-bold text-accent-600">${p.price}</p>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0 ml-2">
           <button
@@ -57,7 +56,7 @@ const ProductCard = ({ p, onEdit, onDelete }) => (
 );
 
 // ── Empty file form state ────────────────────────────────────────────────────
-const EMPTY_FORM = { name: '', price: '', description: '', image: '' };
+const EMPTY_FORM = { name: '', sku: '', description: '', category_id: 1, image: '' };
 
 // ── Main Component ───────────────────────────────────────────────────────────
 const VendorProducts = () => {
@@ -73,7 +72,14 @@ const VendorProducts = () => {
   const [imageError, setImageError] = useState('');
   const imageInputRef = useRef(null);
 
-  const load = () => setProducts(getProducts(user.email));
+  const load = async () => {
+    try {
+      const response = await productService.listProducts();
+      setProducts(response?.data || []);
+    } catch (e) {
+      setToast({ message: e.message || 'Failed to load products', type: 'error' });
+    }
+  };
   useEffect(() => { load(); }, []);
 
   const resetForm = () => {
@@ -121,30 +127,48 @@ const VendorProducts = () => {
 
   // ── Open edit modal ──
   const handleEdit = (p) => {
-    setForm({ name: p.name, price: p.price, description: p.description || '', image: p.image || '' });
+    setForm({ name: p.name, sku: p.sku || '', description: p.description || '', category_id: p.category_id || 1, image: p.image || '' });
     setImagePreview(p.image || '');
     setEditing(p);
     setShowForm(true);
   };
 
   // ── Submit ──
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (editing) {
-      updateProduct(editing.id, form);
-      setToast({ message: 'Product updated.', type: 'success' });
-    } else {
-      addProduct({ ...form, vendorEmail: user.email, vendorName: user.name || user.email });
-      setToast({ message: 'Product added.', type: 'success' });
+    if (!form.name.trim()) return;
+    const sku = form.sku.trim() || form.name.trim().toUpperCase().replace(/\s+/g, '-').slice(0, 30) + '-' + Date.now().toString().slice(-4);
+    try {
+      if (editing) {
+        await productService.updateProduct(editing.id, {
+          name: form.name, description: form.description, category_id: Number(form.category_id)
+        });
+        setToast({ message: 'Product updated.', type: 'success' });
+      } else {
+        await productService.createProduct({
+          name:                form.name,
+          sku,
+          description:         form.description || undefined,
+          category_id:         Number(form.category_id),
+          manufacturer_org_id: user.org_id,   // injected from auth context
+        });
+        setToast({ message: 'Product added.', type: 'success' });
+      }
+      resetForm();
+      load();
+    } catch (err) {
+      setToast({ message: err.message || 'Failed to save product', type: 'error' });
     }
-    resetForm();
-    load();
   };
 
-  const handleDelete = (id) => {
-    deleteProduct(id);
-    setToast({ message: 'Product deleted.', type: 'success' });
-    load();
+  const handleDelete = async (id) => {
+    try {
+      await productService.deleteProduct(id);
+      setToast({ message: 'Product deleted.', type: 'success' });
+      load();
+    } catch (e) {
+      setToast({ message: e.message || 'Failed to delete product', type: 'error' });
+    }
   };
 
   return (
@@ -254,17 +278,32 @@ const VendorProducts = () => {
             />
           </div>
 
-          {/* Price */}
+          {/* Category */}
           <div>
-            <label className="block text-sm font-medium text-brand-700 mb-1.5">Price ($)</label>
-            <input
-              type="number"
-              step="0.01"
+            <label className="block text-sm font-medium text-brand-700 mb-1.5">Category</label>
+            <select
               className="input-field"
-              value={form.price}
-              onChange={(e) => setForm({ ...form, price: e.target.value })}
-              placeholder="0.00"
-              required
+              value={form.category_id}
+              onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+            >
+              <option value={1}>General</option>
+              <option value={2}>Electronics</option>
+              <option value={3}>Mechanical</option>
+              <option value={4}>Raw Materials</option>
+              <option value={5}>Textiles</option>
+            </select>
+          </div>
+
+          {/* SKU */}
+          <div>
+            <label className="block text-sm font-medium text-brand-700 mb-1.5">
+              SKU <span className="text-brand-400 font-normal">(auto-generated if blank)</span>
+            </label>
+            <input
+              className="input-field"
+              value={form.sku}
+              onChange={(e) => setForm({ ...form, sku: e.target.value })}
+              placeholder="e.g. BOLT-M10-GRD8"
             />
           </div>
 

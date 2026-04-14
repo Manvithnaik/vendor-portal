@@ -54,6 +54,7 @@ class AdminLoginRequest(BaseModel):
     """Separate login for platform admins (uses admins table)."""
     email: EmailStr
     password: str
+    role: Optional[str] = None  # Frontend sends role='admin'; accepted but ignored here
 
 
 class TokenResponse(BaseModel):

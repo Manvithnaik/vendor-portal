@@ -48,31 +48,43 @@ def map_org_type_to_role(org_type: OrgTypeEnum) -> str:
 # ---------------------------------------------------------------------------
 # 2.  Order Status  (Frontend → DB)
 # ---------------------------------------------------------------------------
+# New workflow states:
+#   draft → submitted → vendor_review → accepted → processing → ready_to_ship → shipped → delivered
+#                                    ↘ rejected (vendor declines PO)
+# ---------------------------------------------------------------------------
 FRONTEND_TO_DB_ORDER_STATUS: dict[str, OrderStatusEnum] = {
-    "pending":       OrderStatusEnum.submitted,
-    "accepted":      OrderStatusEnum.confirmed,
-    "rejected":      OrderStatusEnum.cancelled,
-    "shipped":       OrderStatusEnum.shipped,
-    "delivered":     OrderStatusEnum.delivered,
-    # Pass-through for values that already match the DB enum
-    "draft":         OrderStatusEnum.draft,
-    "submitted":     OrderStatusEnum.submitted,
-    "confirmed":     OrderStatusEnum.confirmed,
-    "processing":    OrderStatusEnum.processing,
-    "ready_to_ship": OrderStatusEnum.ready_to_ship,
-    "cancelled":     OrderStatusEnum.cancelled,
-    "disputed":      OrderStatusEnum.disputed,
+    # New workflow-specific states
+    "vendor_review":  OrderStatusEnum.vendor_review,   # PO sent; awaiting vendor decision
+    "accepted":       OrderStatusEnum.accepted,         # Vendor accepted the PO
+    "rejected":       OrderStatusEnum.rejected,         # Vendor rejected the PO
+
+    # Legacy pass-through / common states
+    "draft":          OrderStatusEnum.draft,
+    "submitted":      OrderStatusEnum.submitted,
+    "confirmed":      OrderStatusEnum.confirmed,
+    "processing":     OrderStatusEnum.processing,
+    "ready_to_ship":  OrderStatusEnum.ready_to_ship,
+    "shipped":        OrderStatusEnum.shipped,
+    "delivered":      OrderStatusEnum.delivered,
+    "cancelled":      OrderStatusEnum.cancelled,
+    "disputed":       OrderStatusEnum.disputed,
+
+    # Frontend legacy aliases (kept for backward compat)
+    "pending":        OrderStatusEnum.vendor_review,   # "pending" now means waiting vendor review
 }
 
 DB_TO_FRONTEND_ORDER_STATUS: dict[OrderStatusEnum, str] = {
     OrderStatusEnum.draft:          "draft",
-    OrderStatusEnum.submitted:      "pending",
-    OrderStatusEnum.confirmed:      "accepted",
+    OrderStatusEnum.submitted:      "submitted",
+    OrderStatusEnum.confirmed:      "confirmed",
+    OrderStatusEnum.vendor_review:  "pending",          # frontend shows "pending" for vendor_review
+    OrderStatusEnum.accepted:       "accepted",
+    OrderStatusEnum.rejected:       "rejected",
     OrderStatusEnum.processing:     "processing",
     OrderStatusEnum.ready_to_ship:  "ready_to_ship",
     OrderStatusEnum.shipped:        "shipped",
     OrderStatusEnum.delivered:      "delivered",
-    OrderStatusEnum.cancelled:      "rejected",
+    OrderStatusEnum.cancelled:      "cancelled",
     OrderStatusEnum.disputed:       "disputed",
 }
 

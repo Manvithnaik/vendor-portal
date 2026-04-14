@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
 from app.models.enums import (
-    RfqStatusEnum, TicketStatusEnum, RefundStatusEnum, PayoutStatusEnum
+    RfqStatusEnum, TicketStatusEnum, RefundStatusEnum, PayoutStatusEnum, QuoteStatusEnum
 )
 
 
@@ -59,9 +59,17 @@ class QuoteResponse(BaseModel):
     compliance_notes: Optional[str] = None
     version: int
     is_locked: bool
+    status: QuoteStatusEnum  # NEW: submitted | accepted | rejected
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class QuoteSelectResponse(BaseModel):
+    """Response returned after a manufacturer selects a quote."""
+    quote_id: int
+    rfq_id: int
+    message: str = "Quote selected. You may now create an order."
 
 
 # --- Disputes ---

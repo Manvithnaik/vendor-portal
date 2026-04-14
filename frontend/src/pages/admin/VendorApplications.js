@@ -1,22 +1,48 @@
-import React, { useState, useEffect } from 'react';
-import { getApplications, updateApplicationStatus } from '../../utils/storage';
+import React, { useState, useEffect, useCallback } from 'react';
+import apiClient from '../../api/client';
 import StatusBadge from '../../components/common/StatusBadge';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
 import { CheckCircle, XCircle, RotateCcw, Eye } from 'lucide-react';
 
 const VendorApplications = () => {
-  const [apps, setApps] = useState([]);
-  const [toast, setToast] = useState(null);
+  const [apps, setApps]       = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast]     = useState(null);
   const [viewApp, setViewApp] = useState(null);
 
-  const load = () => setApps(getApplications('vendor'));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await apiClient.get('/organizations/pending-applications');
+      const all = res?.data || [];
+      setApps(all.filter(o => o.org_type === 'manufacturer'));
+    } catch {
+      setApps([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const handleAction = (id, status) => {
-    updateApplicationStatus(id, status);
-    setToast({ message: `Application ${status}.`, type: 'success' });
-    load();
+  useEffect(() => { load(); }, [load]);
+
+  const handleAction = async (orgId, status) => {
+    const backendStatus = status === 'approved' ? 'verified' : status === 'rejected' ? 'rejected' : 'pending';
+    try {
+      // status is a query param on this endpoint, not a body
+      await apiClient.patch(`/organizations/${orgId}/verification?status=${backendStatus}`);
+      setToast({ message: `Application ${status}.`, type: 'success' });
+      load();
+    } catch (err) {
+      setToast({ message: err.message || 'Action failed', type: 'error' });
+    }
+  };
+
+  const statusLabel = (s) => {
+    if (s === 'verified')  return 'approved';
+    if (s === 'rejected')  return 'rejected';
+    if (s === 'pending')   return 'pending';
+    return s;
   };
 
   return (
@@ -34,37 +60,40 @@ const VendorApplications = () => {
               <tr className="bg-surface-100 text-brand-600">
                 <th className="text-left px-5 py-3 font-medium">Organization</th>
                 <th className="text-left px-5 py-3 font-medium">Email</th>
-                <th className="text-left px-5 py-3 font-medium">Industry</th>
+                <th className="text-left px-5 py-3 font-medium">City</th>
                 <th className="text-left px-5 py-3 font-medium">Status</th>
                 <th className="text-left px-5 py-3 font-medium">Date</th>
                 <th className="text-right px-5 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-200">
-              {apps.map(app => (
+              {loading && (
+                <tr><td colSpan={6} className="px-5 py-10 text-center text-brand-400">Loading...</td></tr>
+              )}
+              {!loading && apps.map(app => (
                 <tr key={app.id} className="hover:bg-surface-50 transition-colors">
-                  <td className="px-5 py-3 font-medium text-brand-800">{app.orgName}</td>
+                  <td className="px-5 py-3 font-medium text-brand-800">{app.name}</td>
                   <td className="px-5 py-3 text-brand-500">{app.email}</td>
-                  <td className="px-5 py-3 text-brand-500">{app.industryType || '—'}</td>
-                  <td className="px-5 py-3"><StatusBadge status={app.status} /></td>
-                  <td className="px-5 py-3 text-brand-400">{new Date(app.submittedAt).toLocaleDateString()}</td>
+                  <td className="px-5 py-3 text-brand-500">{app.city || '—'}</td>
+                  <td className="px-5 py-3"><StatusBadge status={statusLabel(app.verification_status)} /></td>
+                  <td className="px-5 py-3 text-brand-400">{app.created_at ? new Date(app.created_at).toLocaleDateString() : '—'}</td>
                   <td className="px-5 py-3">
                     <div className="flex items-center justify-end gap-1.5">
                       <button onClick={() => setViewApp(app)} className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-400 hover:text-brand-700" title="View">
                         <Eye size={15} />
                       </button>
-                      {app.status !== 'approved' && (
+                      {app.verification_status !== 'verified' && (
                         <button onClick={() => handleAction(app.id, 'approved')} className="p-1.5 rounded-lg hover:bg-green-50 text-green-600" title="Approve">
                           <CheckCircle size={15} />
                         </button>
                       )}
-                      {app.status !== 'rejected' && (
+                      {app.verification_status !== 'rejected' && (
                         <button onClick={() => handleAction(app.id, 'rejected')} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500" title="Reject">
                           <XCircle size={15} />
                         </button>
                       )}
-                      {app.status !== 'resubmit' && (
-                        <button onClick={() => handleAction(app.id, 'resubmit')} className="p-1.5 rounded-lg hover:bg-orange-50 text-orange-500" title="Ask Resubmit">
+                      {app.verification_status !== 'pending' && (
+                        <button onClick={() => handleAction(app.id, 'pending')} className="p-1.5 rounded-lg hover:bg-orange-50 text-orange-500" title="Reset to Pending">
                           <RotateCcw size={15} />
                         </button>
                       )}
@@ -72,7 +101,7 @@ const VendorApplications = () => {
                   </td>
                 </tr>
               ))}
-              {apps.length === 0 && (
+              {!loading && apps.length === 0 && (
                 <tr><td colSpan={6} className="px-5 py-10 text-center text-brand-400">No vendor applications yet.</td></tr>
               )}
             </tbody>
@@ -80,31 +109,28 @@ const VendorApplications = () => {
         </div>
       </div>
 
-      {/* View detail modal */}
-      <Modal open={!!viewApp} onClose={() => setViewApp(null)} title="Application Details">
+      <Modal open={!!viewApp} onClose={() => setViewApp(null)} title="Vendor Application Details" size="xl">
         {viewApp && (
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+          <div className="space-y-5 text-sm">
+            <div className="flex items-center justify-between bg-surface-50 rounded-xl px-5 py-3">
+              <div><p className="text-xs text-brand-400 font-medium">ID</p><p className="font-mono text-brand-700">{viewApp.id}</p></div>
+              <div className="text-right"><p className="text-xs text-brand-400 font-medium">Status</p><StatusBadge status={statusLabel(viewApp.verification_status)} /></div>
+            </div>
             {[
-              ['Organization', viewApp.orgName],
+              ['Organization', viewApp.name],
               ['Email', viewApp.email],
               ['Phone', viewApp.phone],
-              ['Industry', viewApp.industryType],
-              ['Contact', viewApp.contactName],
-              ['Contact Email', viewApp.contactEmail],
               ['City', viewApp.city],
               ['State', viewApp.state],
               ['Country', viewApp.country],
-              ['Factory Address', viewApp.factoryAddress],
-              ['Signatory', viewApp.signatoryName],
-              ['Document', viewApp.businessDoc || 'None'],
-              ['Status', viewApp.status],
+              ['Website', viewApp.website],
             ].map(([label, val]) => (
-              <div key={label}>
-                <dt className="text-brand-400">{label}</dt>
-                <dd className="font-medium text-brand-800">{val || '—'}</dd>
+              <div key={label} className="grid grid-cols-3 gap-2">
+                <span className="text-brand-400 font-medium">{label}</span>
+                <span className="col-span-2 text-brand-800">{val || '—'}</span>
               </div>
             ))}
-          </dl>
+          </div>
         )}
       </Modal>
     </div>

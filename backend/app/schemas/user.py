@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, computed_field
 
 
 class UserCreate(BaseModel):
@@ -37,6 +37,7 @@ class UserResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @computed_field
     @property
     def full_name(self) -> str:
         return f"{self.first_name} {self.last_name}"

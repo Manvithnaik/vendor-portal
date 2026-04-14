@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { submitApplication } from '../../utils/storage';
+import { authService } from '../../services/authService';
 import { ArrowLeft, Upload, CheckCircle } from 'lucide-react';
 import Toast from '../../components/common/Toast';
 
@@ -26,6 +26,7 @@ const RegisterPage = () => {
   const { role } = useParams(); // 'vendor' or 'manufacturer'
   const navigate = useNavigate();
   const [toast, setToast] = useState(null);
+  const [loading, setLoading] = useState(false);
   const isManufacturer = role === 'manufacturer';
 
   const [form, setForm] = useState({
@@ -42,7 +43,7 @@ const RegisterPage = () => {
 
   const onChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (form.password !== form.confirmPassword) {
       setToast({ message: 'Passwords do not match.', type: 'error' });
@@ -53,13 +54,36 @@ const RegisterPage = () => {
       return;
     }
 
-    const result = submitApplication({ ...form, role });
-    if (!result.success) {
-      setToast({ message: result.message, type: 'error' });
-      return;
+    // Split signatory name into first/last (required by RegisterRequest)
+    const nameParts = (form.signatoryName || form.contactName || 'User').trim().split(' ');
+    const firstName = nameParts[0] || 'User';
+    const lastName  = nameParts.slice(1).join(' ') || '-';
+
+    setLoading(true);
+    try {
+      const data = {
+        role,
+        org_name:         form.orgName || form.contactName,
+        email:            form.email,
+        password:         form.password,
+        confirm_password: form.confirmPassword,   // required by backend schema
+        first_name:       firstName,              // required
+        last_name:        lastName,               // required
+        phone:            form.phone || undefined,
+        user_phone:       form.contactPhone || undefined,
+        address_line1:    form.addressLine1 || undefined,
+        city:             form.city || undefined,
+        state:            form.state || undefined,
+        country:          form.country || undefined,
+        postal_code:      form.postalCode || undefined,
+      };
+      await authService.register(data);
+      navigate(`/application-status?email=${encodeURIComponent(form.email)}&role=${role}`);
+    } catch (error) {
+      setToast({ message: error.message || 'Registration failed', type: 'error' });
+    } finally {
+      setLoading(false);
     }
-    // Redirect to status page
-    navigate(`/application-status?email=${encodeURIComponent(form.email)}&role=${role}`);
   };
 
   return (
@@ -154,8 +178,16 @@ const RegisterPage = () => {
                   <Upload size={18} className="text-brand-400" />
                   <input
                     type="file"
+                    accept="application/pdf,image/*"
                     className="text-sm text-brand-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-brand-100 file:text-brand-700 hover:file:bg-brand-200"
-                    onChange={(e) => setForm({ ...form, businessDoc: e.target.files[0]?.name || '' })}
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      setForm({ ...form, businessDoc: file.name });
+                      const reader = new FileReader();
+                      reader.onload = (ev) => setForm(f => ({ ...f, businessDocData: ev.target.result }));
+                      reader.readAsDataURL(file);
+                    }}
                   />
                 </div>
               </div>
@@ -166,8 +198,8 @@ const RegisterPage = () => {
 
           <div className="flex justify-end gap-3">
             <Link to="/" className="btn-secondary">Cancel</Link>
-            <button type="submit" className="btn-accent">
-              <CheckCircle size={16} /> Submit Application
+            <button type="submit" className="btn-accent" disabled={loading}>
+              <CheckCircle size={16} /> {loading ? 'Submitting...' : 'Submit Application'}
             </button>
           </div>
         </form>

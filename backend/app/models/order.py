@@ -22,7 +22,10 @@ class Order(Base):
     order_number = Column(String(100), nullable=False, unique=True)
     customer_org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     manufacturer_org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
-    contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=False, index=True)
+    contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=True, index=True)  # Now optional: set via quote
+    quotation_id = Column(Integer, ForeignKey("quotes.id"), nullable=True, index=True)    # NEW: links back to accepted quote
+    po_document_url = Column(String(500), nullable=True)                                  # NEW: uploaded PO document
+    vendor_response_reason = Column(Text, nullable=True)                                  # NEW: reason if vendor rejects PO
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     approved_by = Column(Integer, ForeignKey("users.id"))
     status = Column(
@@ -70,7 +73,7 @@ class OrderItem(Base):
     order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     contract_pricing_id = Column(
-        Integer, ForeignKey("contract_product_pricing.id"), nullable=False
+        Integer, ForeignKey("contract_product_pricing.id"), nullable=True  # Optional: not all orders via contract
     )
     quantity = Column(Integer, nullable=False)
     shipped_qty = Column(Numeric(12, 3), nullable=False, default=0)

@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
-import { seedData } from './utils/storage';
+import PrivateRoute from './components/common/PrivateRoute';
 
 // Layouts
 import DashboardLayout from './components/layout/DashboardLayout';
@@ -37,9 +37,6 @@ import PurchaseOrders from './pages/manufacturer/PurchaseOrders';
 import OrderTracking from './pages/manufacturer/OrderTracking';
 import ManufacturerReturns from './pages/manufacturer/ManufacturerReturns';
 
-// Seed default admin on first load
-seedData();
-
 function App() {
   return (
     <AuthProvider>
@@ -51,16 +48,30 @@ function App() {
           <Route path="/register/:role" element={<RegisterPage />} />
           <Route path="/application-status" element={<ApplicationStatusPage />} />
 
-          {/* ---- Admin Dashboard ---- */}
-          <Route path="/admin" element={<DashboardLayout role="admin" />}>
+          {/* ---- Admin Dashboard (protected) ---- */}
+          <Route
+            path="/admin"
+            element={
+              <PrivateRoute requiredRole="admin">
+                <DashboardLayout role="admin" />
+              </PrivateRoute>
+            }
+          >
             <Route index element={<AdminDashboard />} />
             <Route path="vendor-apps" element={<VendorApplications />} />
             <Route path="manufacturer-apps" element={<ManufacturerApplications />} />
             <Route path="manage-admins" element={<ManageAdmins />} />
           </Route>
 
-          {/* ---- Vendor Dashboard ---- */}
-          <Route path="/vendor" element={<DashboardLayout role="vendor" />}>
+          {/* ---- Vendor Dashboard (protected) ---- */}
+          <Route
+            path="/vendor"
+            element={
+              <PrivateRoute requiredRole="vendor">
+                <DashboardLayout role="vendor" />
+              </PrivateRoute>
+            }
+          >
             <Route index element={<VendorDashboard />} />
             <Route path="profile" element={<VendorProfile />} />
             <Route path="products" element={<VendorProducts />} />
@@ -69,8 +80,15 @@ function App() {
             <Route path="returns" element={<VendorReturns />} />
           </Route>
 
-          {/* ---- Manufacturer Dashboard ---- */}
-          <Route path="/manufacturer" element={<DashboardLayout role="manufacturer" />}>
+          {/* ---- Manufacturer Dashboard (protected) ---- */}
+          <Route
+            path="/manufacturer"
+            element={
+              <PrivateRoute requiredRole="manufacturer">
+                <DashboardLayout role="manufacturer" />
+              </PrivateRoute>
+            }
+          >
             <Route index element={<ManufacturerDashboard />} />
             <Route path="profile" element={<ManufacturerProfile />} />
             <Route path="browse" element={<BrowseProducts />} />

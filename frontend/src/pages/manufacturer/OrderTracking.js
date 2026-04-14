@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getOrders } from '../../utils/storage';
+import { orderService } from '../../services/orderService';
+import Toast from '../../components/common/Toast';
 import { Package, CheckCircle, Truck, MapPin, Clock } from 'lucide-react';
 
 const trackSteps = [
@@ -15,14 +16,24 @@ const statusOrder = { pending: 0, accepted: 1, shipped: 2, delivered: 3, rejecte
 const OrderTracking = () => {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
-    const all = getOrders({ manufacturerEmail: user.email });
-    setOrders(all.filter(o => o.status !== 'rejected'));
-  }, []);
+    const loadOrders = async () => {
+      try {
+        const response = await orderService.listOrders();
+        const all = response?.data || [];
+        setOrders(all.filter(o => o.status !== 'rejected'));
+      } catch (err) {
+        setToast({ message: err.message || 'Failed to load orders', type: 'error' });
+      }
+    };
+    loadOrders();
+  }, [user.email]);
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
       <div>
         <h1 className="font-display font-bold text-2xl text-brand-900">Order Tracking</h1>
         <p className="text-sm text-brand-400 mt-1">Track the status of your orders in real-time.</p>

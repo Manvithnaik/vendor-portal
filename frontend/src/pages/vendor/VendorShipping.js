@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { getOrders, updateOrderStatus } from '../../utils/storage';
+import { orderService } from '../../services/orderService';
 import StatusBadge from '../../components/common/StatusBadge';
 import Toast from '../../components/common/Toast';
 import { Truck } from 'lucide-react';
@@ -10,17 +10,26 @@ const VendorShipping = () => {
   const [orders, setOrders] = useState([]);
   const [toast, setToast] = useState(null);
 
-  const load = () => {
-    // Show accepted, shipped, and delivered orders
-    const all = getOrders({ vendorEmail: user.email });
-    setOrders(all.filter(o => ['accepted', 'shipped', 'delivered'].includes(o.status)));
+  const load = async () => {
+    try {
+      const response = await orderService.listOrders({ as_customer: false });
+      const all = response?.data || [];
+      setOrders(all.filter(o => ['accepted', 'shipped', 'delivered'].includes(o.status)));
+    } catch (e) {
+      setToast({ message: e.message || 'Failed to load orders', type: 'error' });
+    }
   };
   useEffect(() => { load(); }, []);
 
-  const handleStatusChange = (id, newStatus) => {
-    updateOrderStatus(id, newStatus);
-    setToast({ message: `Status updated to ${newStatus}.`, type: 'success' });
-    load();
+  const handleStatusChange = async (id, newStatus) => {
+    try {
+      // Assuming a generic update or a specific shipping update endpoint
+      await orderService.updateOrderStatus(id, newStatus);
+      setToast({ message: `Status updated to ${newStatus}.`, type: 'success' });
+      load();
+    } catch (e) {
+      setToast({ message: e.message || 'Failed to update status', type: 'error' });
+    }
   };
 
   return (
