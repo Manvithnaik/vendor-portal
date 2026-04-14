@@ -54,20 +54,30 @@ const RegisterPage = () => {
       return;
     }
 
+    // Split signatory name into first/last (required by RegisterRequest)
+    const nameParts = (form.signatoryName || form.contactName || 'User').trim().split(' ');
+    const firstName = nameParts[0] || 'User';
+    const lastName  = nameParts.slice(1).join(' ') || '-';
+
     setLoading(true);
     try {
-      const payload = { ...form, role };
-      // Prepare the expected RegisterRequest payload structure
       const data = {
-        email: payload.email,
-        password: payload.password,
-        role: payload.role,
-        org_name: payload.orgName || payload.contactName,
-        phone: payload.phone || payload.contactPhone,
-        address: `${payload.addressLine1}, ${payload.city}, ${payload.state}, ${payload.country} ${payload.postalCode}`
+        role,
+        org_name:         form.orgName || form.contactName,
+        email:            form.email,
+        password:         form.password,
+        confirm_password: form.confirmPassword,   // required by backend schema
+        first_name:       firstName,              // required
+        last_name:        lastName,               // required
+        phone:            form.phone || undefined,
+        user_phone:       form.contactPhone || undefined,
+        address_line1:    form.addressLine1 || undefined,
+        city:             form.city || undefined,
+        state:            form.state || undefined,
+        country:          form.country || undefined,
+        postal_code:      form.postalCode || undefined,
       };
-      const result = await authService.register(data);
-      // Redirect to status page
+      await authService.register(data);
       navigate(`/application-status?email=${encodeURIComponent(form.email)}&role=${role}`);
     } catch (error) {
       setToast({ message: error.message || 'Registration failed', type: 'error' });
