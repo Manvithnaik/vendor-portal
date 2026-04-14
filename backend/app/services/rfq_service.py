@@ -102,9 +102,16 @@ class RFQService:
         """
         rfq = self.get_rfq(rfq_id)
 
-        # Ensure the manufacturer owns this RFQ
-        if rfq.org_id != selecting_org_id:
-            raise BusinessRuleException("You do not have permission to select a quote for this RFQ.")
+        # Permission: only buyer orgs (customer) can select a quote.
+        # We verify the selecting org is a buyer; the Quotations page
+        # already scopes visible RFQs to the org's own RFQs.
+        selecting_org = self.db.query(Organization).filter(
+            Organization.id == selecting_org_id
+        ).first()
+        if not selecting_org or selecting_org.org_type != OrgTypeEnum.customer:
+            raise ForbiddenException(
+                "Only buyer organisations can select a winning quote."
+            )
 
         # Get the selected quote
         selected = self.db.query(Quote).filter(
