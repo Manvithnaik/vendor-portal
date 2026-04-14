@@ -167,8 +167,8 @@ const Quotations = () => {
 
   const load = async () => {
     try {
-      // rfqService already returns the inner array
-      const data = await rfqService.listRFQs();
+      const res = await rfqService.listRFQs();
+      const data = res?.data;
       setRfqs(Array.isArray(data) ? data : []);
     } catch (e) {
       setToast({ message: e.message || 'Failed to load RFQs', type: 'error' });

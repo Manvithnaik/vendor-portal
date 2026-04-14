@@ -73,13 +73,12 @@ const VendorOrders = () => {
 
   const load = async () => {
     try {
-      // Services already return the inner payload (array) after .data unwrap
-      const [orderData, rfqData] = await Promise.all([
-        orderService.listOrders(),   // returns orders array directly
-        rfqService.listRFQs(),       // returns rfqs array directly
+      const [orderRes, rfqRes] = await Promise.all([
+        orderService.listOrders(),
+        rfqService.listRFQs(),
       ]);
-      setOrders(Array.isArray(orderData) ? orderData : []);
-      setRfqs(Array.isArray(rfqData) ? rfqData : []);
+      setOrders(Array.isArray(orderRes?.data) ? orderRes.data : []);
+      setRfqs(Array.isArray(rfqRes?.data) ? rfqRes.data : []);
     } catch (e) {
       setToast({ message: e.message || 'Failed to load data', type: 'error' });
     }

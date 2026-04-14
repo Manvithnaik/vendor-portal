@@ -16,8 +16,8 @@ const PurchaseOrders = () => {
     const loadOrders = async () => {
       try {
         // orderService returns the inner payload array directly (after .data unwrap in service)
-        const data = await orderService.listOrders();
-        setOrders(Array.isArray(data) ? data : []);
+        const res = await orderService.listOrders();
+        setOrders(Array.isArray(res?.data) ? res.data : []);
       } catch (err) {
         setToast({ message: err.message || 'Failed to load orders', type: 'error' });
       }

@@ -1,18 +1,16 @@
 import apiClient from '../api/client';
 
+// Returns full APIResponse { status, message, data, errors }
 export const rfqService = {
   createRFQ: async (data) => {
-    const response = await apiClient.post('/vendor/rfq', data);
-    return response.data; // returns the created RFQ object
+    return await apiClient.post('/vendor/rfq', data);
   },
 
   listRFQs: async () => {
-    const response = await apiClient.get('/vendor/rfq');
-    return response.data; // returns the RFQs array directly
+    return await apiClient.get('/vendor/rfq');
   },
 
   updateRFQ: async (rfqId, data) => {
-    const response = await apiClient.put(`/vendor/rfq/${rfqId}`, data);
-    return response.data;
+    return await apiClient.put(`/vendor/rfq/${rfqId}`, data);
   },
 };

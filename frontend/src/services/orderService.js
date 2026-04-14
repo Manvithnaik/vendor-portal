@@ -1,35 +1,30 @@
 import apiClient from '../api/client';
 
+// All methods return the full APIResponse { status, message, data, errors }
+// Callers use .data to access the inner payload
+
 export const orderService = {
   createOrder: async (data) => {
     // Payload MUST include: { quotation_id, po_document_url, delivery_address, manufacturer_org_id }
-    // apiClient interceptor returns full APIResponse; .data is the inner payload
-    const response = await apiClient.post('/orders', data);
-    return response.data;
+    return await apiClient.post('/orders', data);
   },
 
   listOrders: async (filters = {}) => {
-    const params = new URLSearchParams(filters).toString();
-    const response = await apiClient.get(`/orders${params ? '?' + params : ''}`);
-    // response.data is the orders array
-    return response.data;
+    const params = new URLSearchParams(
+      Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== ''))
+    ).toString();
+    return await apiClient.get(`/orders${params ? '?' + params : ''}`);
   },
 
   getOrder: async (orderId) => {
-    const response = await apiClient.get(`/orders/${orderId}`);
-    return response.data;
+    return await apiClient.get(`/orders/${orderId}`);
   },
 
   respondToOrder: async (orderId, action, reason = null) => {
-    const response = await apiClient.post(`/orders/${orderId}/vendor-response`, {
-      action,
-      reason
-    });
-    return response.data;
+    return await apiClient.post(`/orders/${orderId}/vendor-response`, { action, reason });
   },
 
   getOrderHistory: async (orderId) => {
-    const response = await apiClient.get(`/orders/${orderId}/history`);
-    return response.data;
-  }
+    return await apiClient.get(`/orders/${orderId}/history`);
+  },
 };

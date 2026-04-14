@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { productService } from '../../services/productService';
 import { rfqService } from '../../services/rfqService';
-import { orderService } from '../../services/orderService';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
 import { Search, Package, FileText, CheckCircle, Clock, ShoppingCart } from 'lucide-react';
@@ -56,11 +55,15 @@ const BrowseProducts = () => {
   const handleRFQ = async (e) => {
     e.preventDefault();
     setSubmitting(true);
+    // deadline = 30 days from now (ISO string)
+    const deadline = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     try {
       await rfqService.createRFQ({
-        product_id: rfqProduct.id,
-        quantity: getQty(rfqProduct.id),
-        specifications: notes.trim()
+        title:       `RFQ for ${rfqProduct.name}`,
+        description: notes.trim() || undefined,
+        deadline,
+        category_id: rfqProduct.category_id || undefined,
+        broadcast_to_org_ids: rfqProduct.manufacturer_org_id ? [rfqProduct.manufacturer_org_id] : [],
       });
       setToast({ message: `RFQ sent for "${rfqProduct.name}"! The vendor will be notified.`, type: 'success' });
       setRfqProduct(null);
