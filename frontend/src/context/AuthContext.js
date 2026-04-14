@@ -47,21 +47,25 @@ export const AuthProvider = ({ children }) => {
     // Optimistic: show stored session immediately so UI doesn't flash
     if (session) setUser(session);
 
+    // Admins have type:'admin' tokens — /auth/me rejects them with 401.
+    // For admins, trust the stored session (set at login time) and skip /auth/me.
+    if (session?.role === 'admin') {
+      setLoading(false);
+      return;
+    }
+
     try {
-      // Verify token + get fresh user data from /auth/me
+      // Regular users: verify token + get fresh user data from /auth/me
       const result = await authService.getCurrentUser();
       if (result && result.data) {
-        // Merge: /auth/me gives id, org_id, first/last name, is_active etc.
-        // Stored session gives role, org_type which /auth/me lacks
         const merged = {
           ...session,        // role, org_type from localStorage
-          ...result.data,    // id, org_id, first_name, last_name, email, is_active, full_name
-          // Guarantee role survives even if /auth/me overwrites it:
+          ...result.data,    // id, org_id, first_name, last_name, email, is_active
           role:     session?.role     || result.data.role,
           org_type: session?.org_type || result.data.org_type,
         };
         setUser(merged);
-        saveSession(merged); // refresh stored data
+        saveSession(merged);
       }
     } catch (error) {
       // 401 or network error — clear everything

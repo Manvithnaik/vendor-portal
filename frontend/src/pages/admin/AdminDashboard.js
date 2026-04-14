@@ -9,12 +9,8 @@ const AdminDashboard = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const [orgsRes, ordersRes] = await Promise.all([
-          apiClient.get('/organizations/pending-applications'),
-          apiClient.get('/orders'),
-        ]);
-        const orgs   = orgsRes?.data  || [];
-        const orders = ordersRes?.data || [];
+        const orgsRes = await apiClient.get('/organizations/pending-applications');
+        const orgs    = orgsRes?.data || [];
         const vendors = orgs.filter(o => o.org_type === 'manufacturer');
         const mfgs    = orgs.filter(o => o.org_type === 'customer');
         setStats({
@@ -22,7 +18,7 @@ const AdminDashboard = () => {
           vendorPending: vendors.filter(o => o.verification_status === 'pending').length,
           mfgTotal:      mfgs.length,
           mfgPending:    mfgs.filter(o => o.verification_status === 'pending').length,
-          orders:        Array.isArray(orders) ? orders.length : 0,
+          orders: 0,
         });
       } catch { /* show zeros */ }
     };

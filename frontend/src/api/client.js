@@ -29,13 +29,21 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid — clear all session data and redirect to login
-      localStorage.removeItem('token');
-      localStorage.removeItem('vh_session');
-      // Avoid redirect loop if already on /login
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
+      // Check if this is an admin session hitting a user-only endpoint
+      // (admin tokens are rejected by get_current_user deps).
+      // Don't wipe admin session for those failures — just throw.
+      const session = (() => { try { return JSON.parse(localStorage.getItem('vh_session') || '{}'); } catch { return {}; } })();
+      const isAdminSession = session?.role === 'admin';
+
+      if (!isAdminSession) {
+        // Regular user token expired — clear session and redirect to login
+        localStorage.removeItem('token');
+        localStorage.removeItem('vh_session');
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
       }
+      // For admins: let the error propagate — page catch() handles it silently
     }
 
     // Normalize error message from any backend shape
