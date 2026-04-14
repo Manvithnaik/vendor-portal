@@ -17,7 +17,7 @@ const VendorDashboard = () => {
       try {
         const [prodRes, orderRes] = await Promise.all([
           productService.listProducts(),
-          orderService.listOrders()
+          orderService.listOrders({ as_customer: false })
         ]);
         setProducts(prodRes?.data || []);
         setOrders(orderRes?.data || []);

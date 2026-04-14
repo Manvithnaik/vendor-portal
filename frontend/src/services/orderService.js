@@ -27,4 +27,9 @@ export const orderService = {
   getOrderHistory: async (orderId) => {
     return await apiClient.get(`/orders/${orderId}/history`);
   },
+
+  /** PATCH /orders/{id}/status — vendor updates order to shipped/delivered/etc */
+  updateOrderStatus: async (orderId, status, note = null) => {
+    return await apiClient.patch(`/orders/${orderId}/status`, { status, note });
+  },
 };

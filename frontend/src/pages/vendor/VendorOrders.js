@@ -74,7 +74,7 @@ const VendorOrders = () => {
   const load = async () => {
     try {
       const [orderRes, rfqRes] = await Promise.all([
-        orderService.listOrders(),
+        orderService.listOrders({ as_customer: false }),
         rfqService.listRFQs(),
       ]);
       setOrders(Array.isArray(orderRes?.data) ? orderRes.data : []);

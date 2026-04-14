@@ -12,7 +12,7 @@ const VendorShipping = () => {
 
   const load = async () => {
     try {
-      const response = await orderService.listOrders();
+      const response = await orderService.listOrders({ as_customer: false });
       const all = response?.data || [];
       setOrders(all.filter(o => ['accepted', 'shipped', 'delivered'].includes(o.status)));
     } catch (e) {
