@@ -56,7 +56,7 @@ const ProductCard = ({ p, onEdit, onDelete }) => (
 );
 
 // ── Empty file form state ────────────────────────────────────────────────────
-const EMPTY_FORM = { name: '', description: '', image: '' };
+const EMPTY_FORM = { name: '', sku: '', description: '', category_id: 1, image: '' };
 
 // ── Main Component ───────────────────────────────────────────────────────────
 const VendorProducts = () => {
@@ -127,7 +127,7 @@ const VendorProducts = () => {
 
   // ── Open edit modal ──
   const handleEdit = (p) => {
-    setForm({ name: p.name, description: p.description || '', image: p.image || '' });
+    setForm({ name: p.name, sku: p.sku || '', description: p.description || '', category_id: p.category_id || 1, image: p.image || '' });
     setImagePreview(p.image || '');
     setEditing(p);
     setShowForm(true);
@@ -136,18 +136,28 @@ const VendorProducts = () => {
   // ── Submit ──
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.name.trim()) return;
+    const sku = form.sku.trim() || form.name.trim().toUpperCase().replace(/\s+/g, '-').slice(0, 30) + '-' + Date.now().toString().slice(-4);
     try {
       if (editing) {
-        await productService.updateProduct(editing.id, form);
+        await productService.updateProduct(editing.id, {
+          name: form.name, description: form.description, category_id: Number(form.category_id)
+        });
         setToast({ message: 'Product updated.', type: 'success' });
       } else {
-        await productService.createProduct({ ...form });
+        await productService.createProduct({
+          name:                form.name,
+          sku,
+          description:         form.description || undefined,
+          category_id:         Number(form.category_id),
+          manufacturer_org_id: user.org_id,   // injected from auth context
+        });
         setToast({ message: 'Product added.', type: 'success' });
       }
       resetForm();
       load();
-    } catch (e) {
-      setToast({ message: e.message || 'Failed to save product', type: 'error' });
+    } catch (err) {
+      setToast({ message: err.message || 'Failed to save product', type: 'error' });
     }
   };
 
@@ -265,6 +275,35 @@ const VendorProducts = () => {
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="e.g. Steel Bolts M10"
               required
+            />
+          </div>
+
+          {/* Category */}
+          <div>
+            <label className="block text-sm font-medium text-brand-700 mb-1.5">Category</label>
+            <select
+              className="input-field"
+              value={form.category_id}
+              onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+            >
+              <option value={1}>General</option>
+              <option value={2}>Electronics</option>
+              <option value={3}>Mechanical</option>
+              <option value={4}>Raw Materials</option>
+              <option value={5}>Textiles</option>
+            </select>
+          </div>
+
+          {/* SKU */}
+          <div>
+            <label className="block text-sm font-medium text-brand-700 mb-1.5">
+              SKU <span className="text-brand-400 font-normal">(auto-generated if blank)</span>
+            </label>
+            <input
+              className="input-field"
+              value={form.sku}
+              onChange={(e) => setForm({ ...form, sku: e.target.value })}
+              placeholder="e.g. BOLT-M10-GRD8"
             />
           </div>
 
