@@ -102,15 +102,20 @@ class RFQService:
         """
         rfq = self.get_rfq(rfq_id)
 
-        # Permission: only buyer orgs (customer) can select a quote.
-        # We verify the selecting org is a buyer; the Quotations page
-        # already scopes visible RFQs to the org's own RFQs.
+        # Guard 1: only buyer orgs (customer) can select quotes — vendors cannot
         selecting_org = self.db.query(Organization).filter(
             Organization.id == selecting_org_id
         ).first()
         if not selecting_org or selecting_org.org_type != OrgTypeEnum.customer:
             raise ForbiddenException(
-                "Only buyer organisations can select a winning quote."
+                "Only buyer (manufacturer) accounts can select a winning quote. "
+                "Please log in with a manufacturer account."
+            )
+
+        # Guard 2: only the org that created the RFQ can select its winner
+        if rfq.org_id != selecting_org_id:
+            raise ForbiddenException(
+                "You can only select quotes for RFQs created by your own organisation."
             )
 
         # Get the selected quote

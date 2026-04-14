@@ -44,25 +44,33 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
+    // If token exists but session metadata is gone (partial localStorage clear),
+    // we can't determine the user's role safely — force clean re-login.
+    if (!session) {
+      localStorage.removeItem('token');
+      setLoading(false);
+      return;
+    }
+
     // Optimistic: show stored session immediately so UI doesn't flash
-    if (session) setUser(session);
+    setUser(session);
 
     // Admins have type:'admin' tokens — /auth/me rejects them with 401.
     // For admins, trust the stored session (set at login time) and skip /auth/me.
-    if (session?.role === 'admin') {
+    if (session.role === 'admin') {
       setLoading(false);
       return;
     }
 
     try {
-      // Regular users: verify token + get fresh user data from /auth/me
+      // Regular users: verify token is still valid via /auth/me
       const result = await authService.getCurrentUser();
       if (result && result.data) {
         const merged = {
-          ...session,        // role, org_type from localStorage
+          ...session,        // role, org_type — always preserve from session
           ...result.data,    // id, org_id, first_name, last_name, email, is_active
-          role:     session?.role     || result.data.role,
-          org_type: session?.org_type || result.data.org_type,
+          role:     session.role,      // role MUST come from session (not /auth/me)
+          org_type: session.org_type,  // org_type MUST come from session
         };
         setUser(merged);
         saveSession(merged);

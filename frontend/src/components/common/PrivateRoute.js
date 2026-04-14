@@ -5,19 +5,15 @@ import { useAuth } from '../../context/AuthContext';
 /**
  * Wraps protected routes.
  * - Waits for auth to initialise (avoids flash redirect on page refresh).
- * - Redirects to /login if no token present.
+ * - Redirects to /login if no authenticated user.
  * - If requiredRole is supplied, redirects to / if user's role doesn't match.
- *
- * The user object shape after login:
- *   { access_token, user_id, org_id, role, org_type, full_name, email }  (portal login)
- *   { access_token, admin_id, role: 'admin', name, email }                (admin login)
- *   { id, org_id, role_id, first_name, last_name, email, ... }            (after page refresh via /auth/me)
+ *   NOTE: A null/undefined role is treated as "no match" — not a bypass.
  */
 const PrivateRoute = ({ children, requiredRole }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  // Still initialising — show nothing to avoid flash
+  // Still initialising — show spinner to avoid flash redirect
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface-50">
@@ -26,17 +22,22 @@ const PrivateRoute = ({ children, requiredRole }) => {
     );
   }
 
-  // No session — redirect to login, preserving intended destination
-  if (!user && !localStorage.getItem('token')) {
+  // No authenticated user after init — redirect to login
+  if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Role check (optional) — use 'role' from login payload if available
-  if (requiredRole && user) {
-    const userRole = user.role || null; // present from login; may be absent after /auth/me refresh
-    if (userRole && userRole !== requiredRole) {
-      return <Navigate to="/" replace />;
-    }
+  // Role guard — null/undefined role always fails the check (no bypass via missing role)
+  if (requiredRole && user.role !== requiredRole) {
+    // Redirect to the correct portal root based on actual role
+    const roleHome = user.role === 'admin'
+      ? '/admin'
+      : user.role === 'vendor'
+        ? '/vendor'
+        : user.role === 'manufacturer'
+          ? '/manufacturer'
+          : '/';
+    return <Navigate to={roleHome} replace />;
   }
 
   return children;
