@@ -7,7 +7,7 @@ from typing import Optional
 
 from sqlalchemy import (
     Boolean, Column, Date, Integer, Numeric,
-    SmallInteger, String, Text, TIMESTAMP, Enum as SAEnum,
+    SmallInteger, String, Text, TIMESTAMP, Enum as SAEnum, ForeignKey
 )
 from sqlalchemy.orm import relationship
 
@@ -84,7 +84,7 @@ class BusinessVerificationCertificate(Base):
     __tablename__ = "business_verification_certificates"
 
     id = Column(Integer, primary_key=True, index=True)
-    org_id = Column(Integer, nullable=False, index=True)
+    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
     certificate_number = Column(String(255), nullable=False)
     issued_by = Column(String(255), nullable=False)
     issued_date = Column(Date, nullable=False)
@@ -107,7 +107,7 @@ class ManufacturerFinancialDetails(Base):
     __tablename__ = "manufacturer_financial_details"
 
     id = Column(Integer, primary_key=True, index=True)
-    org_id = Column(Integer, unique=True, nullable=False)
+    org_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), unique=True, nullable=False)
     bank_name = Column(String(255))
     account_number_encrypted = Column(String(500))
     routing_number_encrypted = Column(String(500))

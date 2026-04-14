@@ -2,10 +2,11 @@
 import uuid
 from sqlalchemy.orm import Session
 from app.models.vendor_portal import RFQ, RFQBroadcast, Quote
-from app.models.enums import RfqStatusEnum, QuoteStatusEnum
+from app.models.organization import Organization
+from app.models.enums import RfqStatusEnum, QuoteStatusEnum, OrgTypeEnum
 from app.repositories.rfq_repo import RFQRepository, QuoteRepository
 from app.schemas.vendor_portal import RFQCreate, RFQUpdate, QuoteCreate
-from app.exceptions import NotFoundException, ConflictException, BusinessRuleException
+from app.exceptions import NotFoundException, BusinessRuleException, ForbiddenException
 
 
 class RFQService:
@@ -27,6 +28,15 @@ class RFQService:
         return self.rfq_repo.get_broadcasts_for_manufacturer(manufacturer_org_id)
 
     def create_rfq(self, data: RFQCreate, org_id: int) -> RFQ:
+        # Guard: only customer orgs (frontend 'manufacturer' portal) issue RFQs.
+        # Manufacturer orgs in DB (frontend 'vendor' portal) respond with quotes.
+        org = self.db.query(Organization).filter(Organization.id == org_id).first()
+        if org and org.org_type != OrgTypeEnum.customer:
+            raise ForbiddenException(
+                "Only buyer organisations (manufacturer portal) can create RFQs. "
+                "Vendors respond to RFQs by submitting quotes."
+            )
+
         rfq = RFQ(
             org_id=org_id,
             title=data.title,

@@ -3,13 +3,15 @@ import apiClient from '../api/client';
 export const orderService = {
   createOrder: async (data) => {
     // Payload MUST include: { quotation_id, po_document_url, delivery_address, manufacturer_org_id }
+    // apiClient interceptor returns full APIResponse; .data is the inner payload
     const response = await apiClient.post('/orders', data);
     return response.data;
   },
 
   listOrders: async (filters = {}) => {
     const params = new URLSearchParams(filters).toString();
-    const response = await apiClient.get(`/orders?${params}`);
+    const response = await apiClient.get(`/orders${params ? '?' + params : ''}`);
+    // response.data is the orders array
     return response.data;
   },
 

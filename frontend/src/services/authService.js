@@ -2,31 +2,28 @@ import apiClient from '../api/client';
 
 export const authService = {
   login: async (email, password, role) => {
-    // If role is admin, the backend uses a different endpoint or specific logic
     const endpoint = role === 'admin' ? '/auth/admin/login' : '/auth/login';
-    const response = await apiClient.post(endpoint, {
-      email,
-      password,
-      role
-    });
-    
-    // Adjust depending on how token is returned. 
-    // Assuming backend standard response: { status: 'success', data: { token: '...', user: {...} } }
-    if (response?.data?.token) {
-      localStorage.setItem('token', response.data.token);
+    // response IS the full APIResponse: { status, message, data: { access_token, user_id, ... } }
+    const response = await apiClient.post(endpoint, { email, password, role });
+
+    // Backend returns access_token (not 'token')
+    if (response?.data?.access_token) {
+      localStorage.setItem('token', response.data.access_token);
     }
-    
-    return response.data; // Should return { token, user } inside data
+
+    return response; // return full APIResponse; callers access result.data
   },
 
   register: async (data) => {
+    // response IS the APIResponse envelope
     const response = await apiClient.post('/auth/register', data);
-    return response.data;
+    return response;
   },
 
   getCurrentUser: async () => {
+    // response IS the APIResponse envelope, caller reads result.data
     const response = await apiClient.get('/auth/me');
-    return response.data;
+    return response;
   },
 
   logout: () => {

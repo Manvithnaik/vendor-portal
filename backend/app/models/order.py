@@ -73,7 +73,7 @@ class OrderItem(Base):
     order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     contract_pricing_id = Column(
-        Integer, ForeignKey("contract_product_pricing.id"), nullable=False
+        Integer, ForeignKey("contract_product_pricing.id"), nullable=True  # Optional: not all orders via contract
     )
     quantity = Column(Integer, nullable=False)
     shipped_qty = Column(Numeric(12, 3), nullable=False, default=0)

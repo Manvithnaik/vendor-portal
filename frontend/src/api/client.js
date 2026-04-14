@@ -21,22 +21,33 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor to format errors and refresh token if needed in the future
+// Response interceptor
 apiClient.interceptors.response.use(
   (response) => {
-    // Our FastAPI backend standard response format returns { status, message, data, errors }
-    // Let's unwrap it slightly if it's the standard success
+    // Unwrap the { status, message, data } envelope — callers receive the APIResponse object
     return response.data;
   },
   (error) => {
     if (error.response?.status === 401) {
-      // Clear token if unauthorized
+      // Token expired or invalid — clear all session data and redirect to login
       localStorage.removeItem('token');
-      localStorage.removeItem('vh_current_user'); // in case there's old formatting
+      localStorage.removeItem('vh_session');
+      // Avoid redirect loop if already on /login
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
     }
-    
-    // We want to return a predictable error format
-    const errorMessage = error.response?.data?.message || error.message || 'An unexpected error occurred';
+
+    // Normalize error message from any backend shape
+    const errorMessage =
+      error.response?.data?.message ||
+      error.response?.data?.detail  ||
+      (Array.isArray(error.response?.data?.detail)
+        ? error.response.data.detail.map(d => d.msg).join(', ')
+        : null) ||
+      error.message ||
+      'An unexpected error occurred';
+
     throw new Error(errorMessage);
   }
 );

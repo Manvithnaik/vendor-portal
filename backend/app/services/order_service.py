@@ -95,7 +95,7 @@ class OrderService:
                 quotation_id=data.quotation_id,        # NEW
                 po_document_url=data.po_document_url,  # NEW
                 created_by=current_user_id,
-                status=OrderStatusEnum.vendor_review,  # NEW: goes straight to vendor review
+                status=OrderStatusEnum.vendor_review,  # goes straight to vendor review
                 priority=data.priority,
                 currency=data.currency,
                 delivery_address=data.delivery_address,
@@ -106,8 +106,8 @@ class OrderService:
             self.db.add(order)
             self.db.flush()
 
-            # Add any order items if provided
-            total = 0.0
+            # Seed total from accepted quote price; item unit prices updated later
+            total = float(quote.price) if quote.price else 0.0
             for item_data in data.items:
                 item = OrderItem(
                     order_id=order.id,
@@ -115,7 +115,7 @@ class OrderService:
                     contract_pricing_id=item_data.contract_pricing_id,
                     quantity=item_data.quantity,
                     unit=item_data.unit,
-                    unit_price=0.00,  # Will be updated when contract pricing is resolved
+                    unit_price=0.00,
                     notes=item_data.notes,
                 )
                 self.db.add(item)

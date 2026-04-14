@@ -1,47 +1,97 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authService } from '../services/authService';
 
 const AuthContext = createContext(null);
 
+// Keys stored in localStorage to survive page refresh
+const SESSION_KEY = 'vh_session'; // { role, org_id, org_type, full_name, email }
+
+const saveSession = (data) => {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({
+      role:      data.role,
+      org_id:    data.org_id,
+      org_type:  data.org_type,
+      full_name: data.full_name,
+      email:     data.email,
+      user_id:   data.user_id || data.id,
+    }));
+  } catch (_) { /* storage unavailable */ }
+};
+
+const loadSession = () => {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) { return null; }
+};
+
+const clearSession = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem(SESSION_KEY);
+};
+
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser]       = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const initAuth = async () => {
-      const token = localStorage.getItem('token');
-      if (token) {
-        try {
-          const result = await authService.getCurrentUser();
-          if (result && result.data) {
-            setUser(result.data);
-          }
-        } catch (error) {
-          console.error("Failed to fetch current user", error);
-          authService.logout();
-        }
-      }
+  const initAuth = useCallback(async () => {
+    const token   = localStorage.getItem('token');
+    const session = loadSession(); // role, org_id, org_type persisted at login
+
+    if (!token) {
       setLoading(false);
-    };
-    initAuth();
+      return;
+    }
+
+    // Optimistic: show stored session immediately so UI doesn't flash
+    if (session) setUser(session);
+
+    try {
+      // Verify token + get fresh user data from /auth/me
+      const result = await authService.getCurrentUser();
+      if (result && result.data) {
+        // Merge: /auth/me gives id, org_id, first/last name, is_active etc.
+        // Stored session gives role, org_type which /auth/me lacks
+        const merged = {
+          ...session,        // role, org_type from localStorage
+          ...result.data,    // id, org_id, first_name, last_name, email, is_active, full_name
+          // Guarantee role survives even if /auth/me overwrites it:
+          role:     session?.role     || result.data.role,
+          org_type: session?.org_type || result.data.org_type,
+        };
+        setUser(merged);
+        saveSession(merged); // refresh stored data
+      }
+    } catch (error) {
+      // 401 or network error — clear everything
+      clearSession();
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { initAuth(); }, [initAuth]);
 
   const login = async (email, password, role) => {
     try {
       const result = await authService.login(email, password, role);
-      // Backend standard response format { status: "success", data: { user: {...}, token: "..." } }
-      if (result && result.data && result.data.user) {
-        setUser(result.data.user);
-        return { success: true, user: result.data.user };
+      if (result && result.data && result.data.access_token) {
+        const userData = result.data;
+        saveSession(userData);   // persist role, org_id, org_type, full_name
+        setUser(userData);
+        return { success: true, user: userData };
       }
-      return { success: false, message: result.message || 'Login failed' };
+      return { success: false, message: result?.message || 'Login failed' };
     } catch (error) {
       return { success: false, message: error.message || 'Login failed' };
     }
   };
 
   const logout = () => {
-    authService.logout();
+    clearSession();
+    authService.logout(); // clears token via the service as well
     setUser(null);
   };
 

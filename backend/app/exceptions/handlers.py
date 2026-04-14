@@ -137,3 +137,21 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             {"status_code": exc.status_code},
         ),
     )
+
+
+async def validation_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Converts Pydantic RequestValidationError to the standard error envelope."""
+    from fastapi.exceptions import RequestValidationError
+    errors = []
+    if isinstance(exc, RequestValidationError):
+        errors = [
+            {"field": " -> ".join(str(l) for l in e["loc"]), "msg": e["msg"]}
+            for e in exc.errors()
+        ]
+        message = "; ".join(e["msg"] for e in exc.errors())
+    else:
+        message = str(exc)
+    return JSONResponse(
+        status_code=422,
+        content=_error_body(message, "VALIDATION_ERROR", {"errors": errors}),
+    )

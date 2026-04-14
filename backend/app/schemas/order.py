@@ -10,7 +10,7 @@ The service layer translates these via mappers.py before writing to the DB.
 """
 from datetime import date, datetime
 from typing import List, Optional
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, field_serializer
 from app.models.enums import OrderStatusEnum, OrderPriorityEnum
 
 
@@ -110,3 +110,9 @@ class OrderResponse(BaseModel):
     items: List[OrderItemResponse] = []
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("status")
+    def serialize_status(self, status: OrderStatusEnum) -> str:
+        """Always return the frontend-friendly status string, not the raw DB enum."""
+        from app.utils.mappers import map_order_status_to_frontend
+        return map_order_status_to_frontend(status)

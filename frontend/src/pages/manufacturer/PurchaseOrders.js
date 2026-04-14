@@ -4,26 +4,26 @@ import { orderService } from '../../services/orderService';
 import StatusBadge from '../../components/common/StatusBadge';
 import Toast from '../../components/common/Toast';
 import Modal from '../../components/common/Modal';
-import { Eye, FileText, Download } from 'lucide-react';
+import { Eye, FileText, ExternalLink } from 'lucide-react';
 
 const PurchaseOrders = () => {
   const { user } = useAuth();
-  const [orders, setOrders] = useState([]);
+  const [orders, setOrders]     = useState([]);
   const [viewOrder, setViewOrder] = useState(null);
-  const [toast, setToast] = useState(null);
+  const [toast, setToast]       = useState(null);
 
   useEffect(() => {
     const loadOrders = async () => {
       try {
-        const response = await orderService.listOrders();
-        setOrders(response?.data || []);
+        // orderService returns the inner payload array directly (after .data unwrap in service)
+        const data = await orderService.listOrders();
+        setOrders(Array.isArray(data) ? data : []);
       } catch (err) {
         setToast({ message: err.message || 'Failed to load orders', type: 'error' });
       }
     };
     loadOrders();
-  }, [user.email]);
-
+  }, []); // eslint-disable-line
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -38,10 +38,9 @@ const PurchaseOrders = () => {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-surface-100 text-brand-600">
-                <th className="text-left px-5 py-3 font-medium">Order ID</th>
-                <th className="text-left px-5 py-3 font-medium">Product</th>
-                <th className="text-left px-5 py-3 font-medium">Vendor</th>
-                <th className="text-left px-5 py-3 font-medium">Qty</th>
+                <th className="text-left px-5 py-3 font-medium">Order #</th>
+                <th className="text-left px-5 py-3 font-medium">Vendor Org</th>
+                <th className="text-left px-5 py-3 font-medium">Amount</th>
                 <th className="text-left px-5 py-3 font-medium">Status</th>
                 <th className="text-left px-5 py-3 font-medium">Date</th>
                 <th className="text-right px-5 py-3 font-medium">Actions</th>
@@ -50,12 +49,15 @@ const PurchaseOrders = () => {
             <tbody className="divide-y divide-surface-200">
               {orders.map(o => (
                 <tr key={o.id} className="hover:bg-surface-50 transition-colors">
-                  <td className="px-5 py-3 font-mono text-xs text-brand-500">{o.id}</td>
-                  <td className="px-5 py-3 font-medium text-brand-800">{o.productName}</td>
-                  <td className="px-5 py-3 text-brand-500">{o.vendorName || o.vendorEmail}</td>
-                  <td className="px-5 py-3 text-brand-600">{o.quantity}</td>
+                  <td className="px-5 py-3 font-mono text-xs text-brand-500">{o.order_number}</td>
+                  <td className="px-5 py-3 font-medium text-brand-800">Org #{o.manufacturer_org_id}</td>
+                  <td className="px-5 py-3 text-brand-600">
+                    {o.currency} {parseFloat(o.total_amount || 0).toLocaleString()}
+                  </td>
                   <td className="px-5 py-3"><StatusBadge status={o.status} /></td>
-                  <td className="px-5 py-3 text-brand-400">{new Date(o.createdAt).toLocaleDateString()}</td>
+                  <td className="px-5 py-3 text-brand-400">
+                    {o.created_at ? new Date(o.created_at).toLocaleDateString() : '—'}
+                  </td>
                   <td className="px-5 py-3 text-right">
                     <button onClick={() => setViewOrder(o)} className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-400 hover:text-brand-700" title="View Details">
                       <Eye size={15} />
@@ -64,7 +66,7 @@ const PurchaseOrders = () => {
                 </tr>
               ))}
               {orders.length === 0 && (
-                <tr><td colSpan={7} className="px-5 py-10 text-center text-brand-400">No orders yet. Browse products to place orders.</td></tr>
+                <tr><td colSpan={6} className="px-5 py-10 text-center text-brand-400">No orders yet. Browse products to place orders.</td></tr>
               )}
             </tbody>
           </table>
@@ -77,57 +79,57 @@ const PurchaseOrders = () => {
           <div className="space-y-4">
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
               {[
-                ['Order ID', viewOrder.id],
-                ['Product', viewOrder.productName],
-                ['Vendor', viewOrder.vendorName || viewOrder.vendorEmail],
-                ['Quantity', viewOrder.quantity],
-                ['Status', viewOrder.status],
-                ['Date', new Date(viewOrder.createdAt).toLocaleDateString()],
+                ['Order #',     viewOrder.order_number],
+                ['Vendor Org',  `Org #${viewOrder.manufacturer_org_id}`],
+                ['Amount',      `${viewOrder.currency} ${parseFloat(viewOrder.total_amount || 0).toLocaleString()}`],
+                ['Status',      viewOrder.status],
+                ['Priority',    viewOrder.priority],
+                ['Date',        viewOrder.created_at ? new Date(viewOrder.created_at).toLocaleDateString() : '—'],
               ].map(([label, val]) => (
                 <div key={label}>
                   <dt className="text-brand-400">{label}</dt>
                   <dd className="font-medium text-brand-800">{val || '—'}</dd>
                 </div>
               ))}
-              {viewOrder.deliveryAddress && (
-                <div className="sm:col-span-2">
+              {viewOrder.delivery_address && (
+                <div className="col-span-2">
                   <dt className="text-brand-400">Delivery Address</dt>
-                  <dd className="font-medium text-brand-800 whitespace-pre-line">{viewOrder.deliveryAddress}</dd>
+                  <dd className="font-medium text-brand-800 whitespace-pre-line">{viewOrder.delivery_address}</dd>
                 </div>
               )}
-              {viewOrder.deliveryDate && (
+              {viewOrder.expected_delivery_date && (
                 <div>
                   <dt className="text-brand-400">Expected Delivery</dt>
-                  <dd className="font-medium text-brand-800">{viewOrder.deliveryDate}</dd>
+                  <dd className="font-medium text-brand-800">{viewOrder.expected_delivery_date}</dd>
                 </div>
               )}
-              {viewOrder.poNotes && (
-                <div className="sm:col-span-2">
+              {viewOrder.notes && (
+                <div className="col-span-2">
                   <dt className="text-brand-400">Notes</dt>
-                  <dd className="font-medium text-brand-800">{viewOrder.poNotes}</dd>
+                  <dd className="font-medium text-brand-800">{viewOrder.notes}</dd>
                 </div>
               )}
-              {viewOrder.rejectionReason && (
-                <div className="sm:col-span-2">
+              {viewOrder.vendor_response_reason && (
+                <div className="col-span-2">
                   <dt className="text-brand-400">Rejection Reason</dt>
-                  <dd className="font-medium text-red-700">{viewOrder.rejectionReason}</dd>
+                  <dd className="font-medium text-red-700">{viewOrder.vendor_response_reason}</dd>
                 </div>
               )}
             </dl>
-            {viewOrder.poFileData && (
+
+            {viewOrder.po_document_url && (
               <div className="border-t border-surface-200 pt-4">
                 <p className="text-sm font-semibold text-brand-700 mb-2">Purchase Order Document</p>
                 <div className="flex items-center gap-2 text-sm text-brand-600 mb-2">
-                  <FileText size={14} /> {viewOrder.poFileName}
-                </div>
-                <iframe src={viewOrder.poFileData} title="PO Document" className="w-full h-64 border border-surface-200 rounded-lg" />
-                <div className="flex gap-2 mt-2">
-                  <button type="button" onClick={() => { const w = window.open(); if (w) w.document.write(`<iframe src="${viewOrder.poFileData}" style="width:100%;height:100vh;border:none;"></iframe>`); }} className="btn-secondary text-xs">
-                    <Eye size={13} /> Open in New Tab
-                  </button>
-                  <button type="button" onClick={() => { const a = document.createElement('a'); a.href = viewOrder.poFileData; a.download = viewOrder.poFileName || 'po.pdf'; document.body.appendChild(a); a.click(); document.body.removeChild(a); }} className="btn-secondary text-xs">
-                    <Download size={13} /> Download
-                  </button>
+                  <FileText size={14} />
+                  <a
+                    href={viewOrder.po_document_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent-600 hover:text-accent-700 font-medium inline-flex items-center gap-1"
+                  >
+                    <ExternalLink size={13} /> View PO Document
+                  </a>
                 </div>
               </div>
             )}

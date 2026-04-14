@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { rfqService } from '../../services/rfqService';
 import { quoteService } from '../../services/quoteService';
@@ -7,13 +7,11 @@ import StatusBadge from '../../components/common/StatusBadge';
 import Toast from '../../components/common/Toast';
 import Modal from '../../components/common/Modal';
 import {
-  CheckCircle, XCircle, Upload, FileText, Package,
-  ShoppingCart, AlertCircle, Clock, ChevronRight, Eye, Download
+  CheckCircle, XCircle, FileText, Package,
+  ShoppingCart, Clock, Eye, ExternalLink
 } from 'lucide-react';
 
-// ──────────────────────────────────────────────────
-// Tab button
-// ──────────────────────────────────────────────────
+// ── Tab button ──────────────────────────────────────────────────────────────
 const Tab = ({ active, onClick, icon: Icon, label, count }) => (
   <button
     onClick={onClick}
@@ -35,62 +33,61 @@ const Tab = ({ active, onClick, icon: Icon, label, count }) => (
   </button>
 );
 
-// ──────────────────────────────────────────────────
-// RFQ status badge
-// ──────────────────────────────────────────────────
+// ── RFQ status badge ────────────────────────────────────────────────────────
+// Backend RfqStatusEnum: draft | active | extended | closed | cancelled
 const RFQBadge = ({ status }) => {
   const map = {
-    open: 'bg-yellow-100 text-yellow-800',
-    submitted: 'bg-green-100 text-green-800',
-    closed: 'bg-gray-100 text-gray-500',
+    active:   'bg-yellow-100 text-yellow-800',
+    extended: 'bg-blue-100 text-blue-700',
+    draft:    'bg-gray-100 text-gray-500',
+    closed:   'bg-green-100 text-green-700',
+    cancelled:'bg-red-100 text-red-500',
   };
+  const label = { active: 'Open', extended: 'Extended', draft: 'Draft', closed: 'Closed', cancelled: 'Cancelled' };
   return (
     <span className={`badge ${map[status] || 'bg-gray-100 text-gray-600'}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+      {label[status] || status}
     </span>
   );
 };
 
-// ──────────────────────────────────────────────────
-// Main Component
-// ──────────────────────────────────────────────────
+// ── Main Component ───────────────────────────────────────────────────────────
 const VendorOrders = () => {
   const { user } = useAuth();
-  const [tab, setTab] = useState('orders');   // 'orders' | 'rfqs'
+  const [tab, setTab]       = useState('orders');
   const [orders, setOrders] = useState([]);
-  const [rfqs, setRfqs] = useState([]);
-  const [toast, setToast] = useState(null);
+  const [rfqs, setRfqs]     = useState([]);
+  const [toast, setToast]   = useState(null);
 
-  // PDF upload modal state
-  const [uploadRFQ, setUploadRFQ] = useState(null);
-  const [pdfFile, setPdfFile] = useState(null);
-  const [pdfPreview, setPdfPreview] = useState('');
-  const [uploadError, setUploadError] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef(null);
+  // Quote submit modal state (vendor submits price+lead_time to manufacturer RFQ)
+  const [quoteRFQ, setQuoteRFQ]       = useState(null);
+  const [quoteForm, setQuoteForm]     = useState({ price: '', lead_time_days: '', compliance_notes: '' });
+  const [quoteError, setQuoteError]   = useState('');
+  const [submittingQuote, setSubmittingQuote] = useState(false);
 
   // PO detail modal
-  const [viewOrder, setViewOrder] = useState(null);
+  const [viewOrder, setViewOrder]     = useState(null);
   // Reject reason modal
   const [rejectOrder, setRejectOrder] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
 
   const load = async () => {
     try {
-      const [orderRes, rfqRes] = await Promise.all([
-        orderService.listOrders(),
-        rfqService.listRFQs()
+      // Services already return the inner payload (array) after .data unwrap
+      const [orderData, rfqData] = await Promise.all([
+        orderService.listOrders(),   // returns orders array directly
+        rfqService.listRFQs(),       // returns rfqs array directly
       ]);
-      setOrders(orderRes?.data || []);
-      setRfqs(rfqRes?.data || []);
+      setOrders(Array.isArray(orderData) ? orderData : []);
+      setRfqs(Array.isArray(rfqData) ? rfqData : []);
     } catch (e) {
       setToast({ message: e.message || 'Failed to load data', type: 'error' });
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, []); // eslint-disable-line
 
-  // ── Order actions ──
+  // ── Order actions ────────────────────────────────────────────────────────
   const handleOrderAction = async (id, action) => {
     try {
       await orderService.respondToOrder(id, action);
@@ -116,87 +113,58 @@ const VendorOrders = () => {
     }
   };
 
-  // ── PDF file selection & validation ──
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    setUploadError('');
-    setPdfFile(null);
-    setPdfPreview('');
-
-    if (!file) return;
-
-    if (file.type !== 'application/pdf') {
-      setUploadError('Only PDF files are allowed.');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setUploadError('File size must be under 5 MB.');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setPdfFile(file);
-      setPdfPreview(ev.target.result);
-    };
-    reader.readAsDataURL(file);
+  // ── Quote submit (vendor replies to RFQ with price + lead_time) ──────────
+  const resetQuoteModal = () => {
+    setQuoteRFQ(null);
+    setQuoteForm({ price: '', lead_time_days: '', compliance_notes: '' });
+    setQuoteError('');
   };
 
-  const handleUpload = async (e) => {
+  const handleQuoteSubmit = async (e) => {
     e.preventDefault();
-    if (!pdfPreview) { setUploadError('Please select a PDF file.'); return; }
+    const price = parseFloat(quoteForm.price);
+    const lead  = parseInt(quoteForm.lead_time_days, 10);
+    if (!price || price <= 0)    { setQuoteError('Enter a valid price.'); return; }
+    if (!lead  || lead  <= 0)    { setQuoteError('Enter a valid lead time (days).'); return; }
 
-    setUploading(true);
+    setSubmittingQuote(true);
     try {
       await quoteService.submitQuote({
-        rfq_id: uploadRFQ.id,
-        price: 0,
-        valid_until: null,
-        file_name: pdfFile.name,
-        file_data: pdfPreview
+        rfq_id:           quoteRFQ.id,
+        price,
+        lead_time_days:   lead,
+        compliance_notes: quoteForm.compliance_notes || null,
       });
-      setToast({ message: 'Quotation PDF uploaded successfully!', type: 'success' });
-      setUploadRFQ(null);
-      setPdfFile(null);
-      setPdfPreview('');
-      setUploadError('');
+      setToast({ message: 'Quotation submitted successfully!', type: 'success' });
+      resetQuoteModal();
       load();
     } catch (error) {
-      setToast({ message: error.message || 'Failed to upload quotation.', type: 'error' });
+      setQuoteError(error.message || 'Failed to submit quotation.');
     } finally {
-      setUploading(false);
+      setSubmittingQuote(false);
     }
   };
 
-  const resetUploadModal = () => {
-    setUploadRFQ(null);
-    setPdfFile(null);
-    setPdfPreview('');
-    setUploadError('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const pendingRFQs = rfqs.filter(r => r.status === 'open').length;
-
-  // Optional: Add seen mechanism via backend if supported in future
-  useEffect(() => {
-    // Left empty since we migrated from localStorage
-  }, [tab, rfqs, user?.email]);
+  // Backend sends 'vendor_review' for orders awaiting action;
+  // OrderResponse.status is now serialized via field_serializer to frontend-friendly values,
+  // but 'vendor_review' maps to 'pending' in the mapper. Keep both for safety.
+  const pendingOrderCount = orders.filter(o => o.status === 'pending' || o.status === 'vendor_review').length;
+  const activeRFQCount    = rfqs.filter(r => r.status === 'active' || r.status === 'extended').length;
 
   return (
     <div className="space-y-6 animate-fade-in">
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       <div>
-        <h1 className="font-display font-bold text-2xl text-brand-900">Orders & RFQs</h1>
+        <h1 className="font-display font-bold text-2xl text-brand-900">Orders &amp; RFQs</h1>
         <p className="text-sm text-brand-400 mt-1">Manage purchase orders and quotation requests from manufacturers.</p>
       </div>
 
       {/* Tabs */}
       <div className="card overflow-hidden">
         <div className="flex border-b border-surface-200 overflow-x-auto">
-          <Tab active={tab === 'orders'} onClick={() => setTab('orders')} icon={ShoppingCart} label="Purchase Orders" count={orders.filter(o => o.status === 'pending').length} />
-          <Tab active={tab === 'rfqs'} onClick={() => setTab('rfqs')} icon={FileText} label="RFQ Requests" count={pendingRFQs} />
+          <Tab active={tab === 'orders'} onClick={() => setTab('orders')} icon={ShoppingCart} label="Purchase Orders" count={pendingOrderCount} />
+          <Tab active={tab === 'rfqs'}   onClick={() => setTab('rfqs')}   icon={FileText}     label="RFQ Requests"   count={activeRFQCount}    />
         </div>
 
         {/* ── Orders Tab ── */}
@@ -205,10 +173,9 @@ const VendorOrders = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-surface-100 text-brand-600">
-                  <th className="text-left px-5 py-3 font-medium">Order ID</th>
-                  <th className="text-left px-5 py-3 font-medium">Product</th>
-                  <th className="text-left px-5 py-3 font-medium">Manufacturer</th>
-                  <th className="text-left px-5 py-3 font-medium">Qty</th>
+                  <th className="text-left px-5 py-3 font-medium">Order #</th>
+                  <th className="text-left px-5 py-3 font-medium">From Org</th>
+                  <th className="text-left px-5 py-3 font-medium">Amount</th>
                   <th className="text-left px-5 py-3 font-medium">Status</th>
                   <th className="text-left px-5 py-3 font-medium">Date</th>
                   <th className="text-right px-5 py-3 font-medium">Actions</th>
@@ -217,18 +184,22 @@ const VendorOrders = () => {
               <tbody className="divide-y divide-surface-200">
                 {orders.map(o => (
                   <tr key={o.id} className="hover:bg-surface-50 transition-colors">
-                    <td className="px-5 py-3 font-mono text-xs text-brand-500">{o.id}</td>
-                    <td className="px-5 py-3 font-medium text-brand-800">{o.productName}</td>
-                    <td className="px-5 py-3 text-brand-500">{o.manufacturerEmail}</td>
-                    <td className="px-5 py-3 text-brand-600">{o.quantity}</td>
+                    <td className="px-5 py-3 font-mono text-xs text-brand-500">{o.order_number}</td>
+                    <td className="px-5 py-3 font-medium text-brand-800">Org #{o.customer_org_id}</td>
+                    <td className="px-5 py-3 text-brand-600">
+                      {o.currency} {parseFloat(o.total_amount || 0).toLocaleString()}
+                    </td>
                     <td className="px-5 py-3"><StatusBadge status={o.status} /></td>
-                    <td className="px-5 py-3 text-brand-400">{new Date(o.createdAt).toLocaleDateString()}</td>
+                    <td className="px-5 py-3 text-brand-400">
+                      {o.created_at ? new Date(o.created_at).toLocaleDateString() : '—'}
+                    </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1.5">
                         <button onClick={() => setViewOrder(o)} className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-400 hover:text-brand-700" title="View Details">
                           <Eye size={15} />
                         </button>
-                        {o.status === 'vendor_review' && (
+                        {/* status is 'pending' from serializer (maps from vendor_review) */}
+                        {(o.status === 'pending' || o.status === 'vendor_review') && (
                           <>
                             <button onClick={() => handleOrderAction(o.id, 'accept')} className="p-1.5 rounded-lg hover:bg-green-50 text-green-600" title="Accept">
                               <CheckCircle size={15} />
@@ -243,7 +214,7 @@ const VendorOrders = () => {
                   </tr>
                 ))}
                 {orders.length === 0 && (
-                  <tr><td colSpan={7} className="px-5 py-12 text-center text-brand-400">No orders received yet.</td></tr>
+                  <tr><td colSpan={6} className="px-5 py-12 text-center text-brand-400">No orders received yet.</td></tr>
                 )}
               </tbody>
             </table>
@@ -257,7 +228,7 @@ const VendorOrders = () => {
               <div className="px-5 py-16 text-center">
                 <FileText size={40} className="text-brand-200 mx-auto mb-3" />
                 <p className="text-brand-400">No RFQ requests received yet.</p>
-                <p className="text-sm text-brand-300 mt-1">When manufacturers request quotations for your products, they will appear here.</p>
+                <p className="text-sm text-brand-300 mt-1">When manufacturers broadcast RFQs to your organisation, they will appear here.</p>
               </div>
             ) : (
               rfqs.map(rfq => (
@@ -267,33 +238,30 @@ const VendorOrders = () => {
                       <Package size={16} className="text-indigo-600" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-brand-900 truncate">{rfq.productName}</p>
+                      <p className="text-sm font-semibold text-brand-900 truncate">{rfq.title}</p>
                       <p className="text-xs text-brand-400">
-                        From: <span className="text-brand-600 font-medium">{rfq.manufacturerName || rfq.manufacturerEmail}</span>
+                        RFQ #{rfq.id} · Deadline: {rfq.deadline ? new Date(rfq.deadline).toLocaleDateString() : '—'}
                         {' · '}
-                        {new Date(rfq.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        {rfq.created_at ? new Date(rfq.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
                       </p>
-                      {rfq.notes && (
-                        <p className="text-xs text-brand-500 mt-0.5 truncate max-w-xs">
-                          Notes: {rfq.notes}
-                        </p>
+                      {rfq.description && (
+                        <p className="text-xs text-brand-500 mt-0.5 truncate max-w-xs">{rfq.description}</p>
                       )}
                     </div>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0 ml-4">
                     <RFQBadge status={rfq.status} />
-                    {rfq.status === 'open' ? (
+                    {(rfq.status === 'active' || rfq.status === 'extended') ? (
                       <button
-                        onClick={() => setUploadRFQ(rfq)}
+                        onClick={() => { setQuoteRFQ(rfq); setQuoteForm({ price: '', lead_time_days: '', compliance_notes: '' }); setQuoteError(''); }}
                         className="btn-accent text-xs py-2"
                       >
-                        <Upload size={13} />
-                        Upload Quotation PDF
+                        Submit Quotation
                       </button>
                     ) : (
                       <div className="flex items-center gap-1.5 text-xs text-green-700 font-medium">
                         <CheckCircle size={13} />
-                        Submitted
+                        {rfq.status === 'closed' ? 'Closed' : rfq.status}
                       </div>
                     )}
                   </div>
@@ -304,79 +272,65 @@ const VendorOrders = () => {
         )}
       </div>
 
-      {/* ── PDF Upload Modal ── */}
-      <Modal open={!!uploadRFQ} onClose={resetUploadModal} title="Upload Quotation PDF">
-        {uploadRFQ && (
-          <form onSubmit={handleUpload} className="space-y-4">
-            {/* RFQ summary */}
+      {/* ── Submit Quote Modal ── */}
+      <Modal open={!!quoteRFQ} onClose={resetQuoteModal} title="Submit Quotation">
+        {quoteRFQ && (
+          <form onSubmit={handleQuoteSubmit} className="space-y-4">
             <div className="p-3 bg-surface-100 rounded-lg">
               <p className="text-xs text-brand-500 mb-1">RFQ Details</p>
-              <p className="text-sm font-semibold text-brand-900">{uploadRFQ.productName}</p>
-              <p className="text-xs text-brand-400">Requested by: {uploadRFQ.manufacturerName || uploadRFQ.manufacturerEmail}</p>
-              {uploadRFQ.notes && (
-                <p className="text-xs text-brand-500 mt-1 italic">"{uploadRFQ.notes}"</p>
-              )}
+              <p className="text-sm font-semibold text-brand-900">{quoteRFQ.title}</p>
+              <p className="text-xs text-brand-400">Deadline: {quoteRFQ.deadline ? new Date(quoteRFQ.deadline).toLocaleDateString() : '—'}</p>
+              {quoteRFQ.description && <p className="text-xs text-brand-500 mt-1 italic">"{quoteRFQ.description}"</p>}
             </div>
 
-            {/* File drop zone */}
-            <div>
-              <label className="block text-sm font-medium text-brand-700 mb-1.5">
-                Quotation PDF <span className="text-red-500">*</span>
-              </label>
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className={`relative flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
-                  pdfFile
-                    ? 'border-green-400 bg-green-50'
-                    : 'border-brand-200 bg-surface-50 hover:border-brand-400 hover:bg-brand-50'
-                }`}
-              >
-                {pdfFile ? (
-                  <>
-                    <FileText size={28} className="text-green-600 mb-2" />
-                    <p className="text-sm font-semibold text-green-700 text-center truncate max-w-full">{pdfFile.name}</p>
-                    <p className="text-xs text-green-600 mt-0.5">{(pdfFile.size / 1024).toFixed(1)} KB · Click to change</p>
-                  </>
-                ) : (
-                  <>
-                    <Upload size={28} className="text-brand-300 mb-2" />
-                    <p className="text-sm font-medium text-brand-600">Click to upload PDF</p>
-                    <p className="text-xs text-brand-400 mt-0.5">PDF only · Max 5 MB</p>
-                  </>
-                )}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-brand-700 mb-1.5">
+                  Price (Total) <span className="text-red-500">*</span>
+                </label>
                 <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf"
-                  className="hidden"
-                  onChange={handleFileChange}
+                  type="number" min="0.01" step="0.01" className="input-field"
+                  placeholder="e.g. 50000.00"
+                  value={quoteForm.price}
+                  onChange={e => setQuoteForm({ ...quoteForm, price: e.target.value })}
+                  required
                 />
               </div>
-
-              {/* Validation error */}
-              {uploadError && (
-                <div className="flex items-center gap-2 mt-2 text-red-600 text-xs">
-                  <AlertCircle size={13} />
-                  {uploadError}
-                </div>
-              )}
+              <div>
+                <label className="block text-sm font-medium text-brand-700 mb-1.5">
+                  Lead Time (days) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number" min="1" className="input-field"
+                  placeholder="e.g. 14"
+                  value={quoteForm.lead_time_days}
+                  onChange={e => setQuoteForm({ ...quoteForm, lead_time_days: e.target.value })}
+                  required
+                />
+              </div>
             </div>
 
-            {/* Info note */}
+            <div>
+              <label className="block text-sm font-medium text-brand-700 mb-1.5">Compliance Notes (optional)</label>
+              <textarea
+                className="input-field resize-none h-20"
+                placeholder="Any compliance or delivery conditions..."
+                value={quoteForm.compliance_notes}
+                onChange={e => setQuoteForm({ ...quoteForm, compliance_notes: e.target.value })}
+              />
+            </div>
+
             <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-100 rounded-lg text-xs text-amber-700">
               <Clock size={13} className="mt-0.5 flex-shrink-0" />
-              <span>Once uploaded, the manufacturer will be able to view and download your quotation PDF from their <strong>Quotations</strong> page.</span>
+              <span>Once submitted, the manufacturer can view your quote and place an order referencing it.</span>
             </div>
 
+            {quoteError && <p className="text-red-600 text-xs">{quoteError}</p>}
+
             <div className="flex justify-end gap-3 pt-2">
-              <button type="button" onClick={resetUploadModal} className="btn-secondary">Cancel</button>
-              <button
-                type="submit"
-                className="btn-accent"
-                disabled={uploading || !pdfFile}
-              >
-                <Upload size={15} />
-                {uploading ? 'Uploading...' : 'Submit Quotation'}
+              <button type="button" onClick={resetQuoteModal} className="btn-secondary">Cancel</button>
+              <button type="submit" className="btn-accent" disabled={submittingQuote}>
+                {submittingQuote ? 'Submitting...' : 'Submit Quotation'}
               </button>
             </div>
           </form>
@@ -389,89 +343,61 @@ const VendorOrders = () => {
           <div className="space-y-4">
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
               {[
-                ['Order ID', viewOrder.id],
-                ['Product', viewOrder.productName],
-                ['Manufacturer', viewOrder.manufacturerName || viewOrder.manufacturerEmail],
-                ['Quantity', viewOrder.quantity],
-                ['Status', viewOrder.status],
-                ['Date', new Date(viewOrder.createdAt).toLocaleDateString()],
+                ['Order #',     viewOrder.order_number],
+                ['Customer Org', `Org #${viewOrder.customer_org_id}`],
+                ['Amount',      `${viewOrder.currency} ${parseFloat(viewOrder.total_amount || 0).toLocaleString()}`],
+                ['Status',      viewOrder.status],
+                ['Priority',    viewOrder.priority],
+                ['Date',        viewOrder.created_at ? new Date(viewOrder.created_at).toLocaleDateString() : '—'],
               ].map(([label, val]) => (
                 <div key={label}>
                   <dt className="text-brand-400">{label}</dt>
                   <dd className="font-medium text-brand-800">{val || '—'}</dd>
                 </div>
               ))}
-              {viewOrder.deliveryAddress && (
-                <div className="sm:col-span-2">
+              {viewOrder.delivery_address && (
+                <div className="col-span-2">
                   <dt className="text-brand-400">Delivery Address</dt>
-                  <dd className="font-medium text-brand-800 whitespace-pre-line">{viewOrder.deliveryAddress}</dd>
+                  <dd className="font-medium text-brand-800 whitespace-pre-line">{viewOrder.delivery_address}</dd>
                 </div>
               )}
-              {viewOrder.deliveryDate && (
+              {viewOrder.expected_delivery_date && (
                 <div>
                   <dt className="text-brand-400">Expected Delivery</dt>
-                  <dd className="font-medium text-brand-800">{viewOrder.deliveryDate}</dd>
+                  <dd className="font-medium text-brand-800">{viewOrder.expected_delivery_date}</dd>
                 </div>
               )}
-              {viewOrder.poNotes && (
-                <div className="sm:col-span-2">
+              {viewOrder.notes && (
+                <div className="col-span-2">
                   <dt className="text-brand-400">Notes</dt>
-                  <dd className="font-medium text-brand-800">{viewOrder.poNotes}</dd>
+                  <dd className="font-medium text-brand-800">{viewOrder.notes}</dd>
                 </div>
               )}
-              {viewOrder.rejectionReason && (
-                <div className="sm:col-span-2">
+              {viewOrder.vendor_response_reason && (
+                <div className="col-span-2">
                   <dt className="text-brand-400">Rejection Reason</dt>
-                  <dd className="font-medium text-red-700">{viewOrder.rejectionReason}</dd>
+                  <dd className="font-medium text-red-700">{viewOrder.vendor_response_reason}</dd>
                 </div>
               )}
             </dl>
 
-            {/* PO Document Preview */}
-            {viewOrder.poFileData && (
+            {/* PO Document Link */}
+            {viewOrder.po_document_url && (
               <div className="border-t border-surface-200 pt-4">
                 <p className="text-sm font-semibold text-brand-700 mb-2">Purchase Order Document</p>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm text-brand-600">
-                    <FileText size={14} /> {viewOrder.poFileName}
-                  </div>
-                  <iframe
-                    src={viewOrder.poFileData}
-                    title="PO Document Preview"
-                    className="w-full h-64 border border-surface-200 rounded-lg"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const win = window.open();
-                        if (win) win.document.write(`<iframe src="${viewOrder.poFileData}" style="width:100%;height:100vh;border:none;"></iframe>`);
-                      }}
-                      className="btn-secondary text-xs"
-                    >
-                      <Eye size={13} /> Open in New Tab
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const a = document.createElement('a');
-                        a.href = viewOrder.poFileData;
-                        a.download = viewOrder.poFileName || 'purchase-order.pdf';
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                      }}
-                      className="btn-secondary text-xs"
-                    >
-                      <Download size={13} /> Download
-                    </button>
-                  </div>
-                </div>
+                <a
+                  href={viewOrder.po_document_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm text-accent-600 hover:text-accent-700 font-medium"
+                >
+                  <ExternalLink size={14} /> View PO Document
+                </a>
               </div>
             )}
 
             {/* Action buttons */}
-            {viewOrder.status === 'vendor_review' && (
+            {(viewOrder.status === 'pending' || viewOrder.status === 'vendor_review') && (
               <div className="flex gap-2 pt-2 border-t border-surface-200">
                 <button
                   onClick={() => handleOrderAction(viewOrder.id, 'accept')}
@@ -496,8 +422,8 @@ const VendorOrders = () => {
         {rejectOrder && (
           <div className="space-y-4">
             <div className="p-3 bg-surface-100 rounded-lg">
-              <p className="text-sm font-semibold text-brand-900">{rejectOrder.productName}</p>
-              <p className="text-xs text-brand-400">Order: {rejectOrder.id} · From: {rejectOrder.manufacturerName || rejectOrder.manufacturerEmail}</p>
+              <p className="text-sm font-semibold text-brand-900">{rejectOrder.order_number}</p>
+              <p className="text-xs text-brand-400">From: Org #{rejectOrder.customer_org_id}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-brand-700 mb-1.5">

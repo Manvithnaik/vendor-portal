@@ -206,7 +206,7 @@ class Quote(Base):
         default=QuoteStatusEnum.submitted,
     )  # NEW: submitted → accepted/rejected by manufacturer
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    deleted_at = Column(TIMESTAMP(timezone=True))
+    deleted_at = Column(TIMESTAMP(timezone=True))  # soft-delete; required by rfq_repo filter
 
     rfq = relationship("RFQ", back_populates="quotes")
     manufacturer_org = relationship("Organization", foreign_keys=[manufacturer_org_id])
