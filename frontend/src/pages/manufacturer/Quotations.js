@@ -71,9 +71,8 @@ const RFQRow = ({ rfq, onPlaceOrder }) => {
 
   const loadQuotations = useCallback(async () => {
     try {
-      // quoteService returns inner payload (array) directly
-      const data = await quoteService.listQuotes(rfq.id);
-      setQuotations(Array.isArray(data) ? data : []);
+      const res = await quoteService.listQuotes(rfq.id);
+      setQuotations(Array.isArray(res?.data) ? res.data : []);
     } catch (e) {
       console.error(e);
     }

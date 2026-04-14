@@ -1,23 +1,19 @@
 import apiClient from '../api/client';
 
+// All methods return full APIResponse { status, message, data, errors }
+
 export const quoteService = {
   /**
    * Vendor submits a quotation in response to an RFQ.
    * QuoteCreate requires: { rfq_id, price, lead_time_days, compliance_notes? }
-   * lead_time_days is REQUIRED (no default in backend schema).
    */
   submitQuote: async (data) => {
-    const response = await apiClient.post('/vendor/rfq/quote', data);
-    return response.data; // returns the created Quote object
+    return await apiClient.post('/vendor/rfq/quote', data);
   },
 
-  /**
-   * List all quotes for a given RFQ.
-   * Returns the quotes array directly.
-   */
+  /** List all quotes for a given RFQ. */
   listQuotes: async (rfqId) => {
-    const response = await apiClient.get(`/vendor/rfq/${rfqId}/quotes`);
-    return response.data; // returns quotes array directly
+    return await apiClient.get(`/vendor/rfq/${rfqId}/quotes`);
   },
 
   /**
@@ -25,7 +21,6 @@ export const quoteService = {
    * Locks the chosen quote, rejects others, closes the RFQ.
    */
   selectQuote: async (rfqId, quoteId) => {
-    const response = await apiClient.post(`/vendor/rfq/${rfqId}/select-quote/${quoteId}`);
-    return response.data; // returns { quote_id, rfq_id, message }
+    return await apiClient.post(`/vendor/rfq/${rfqId}/select-quote/${quoteId}`);
   },
 };
