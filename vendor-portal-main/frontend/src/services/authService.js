@@ -26,6 +26,11 @@ export const authService = {
     return response;
   },
 
+  getApplicationStatus: async (email) => {
+    const response = await apiClient.get(`/auth/application/status?email=${encodeURIComponent(email)}`);
+    return response;
+  },
+
   logout: () => {
     localStorage.removeItem('token');
   }

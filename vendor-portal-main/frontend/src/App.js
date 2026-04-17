@@ -16,6 +16,7 @@ import RegisterPage from './pages/auth/RegisterPage';
 import ApplicationStatusPage from './pages/auth/ApplicationStatusPage';
 import ForgotPasswordPage from './pages/auth/forgetpassword';
 import ResetPasswordPage from './pages/auth/resetpassword';
+import TrackApplication from './pages/auth/TrackApplication';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -54,6 +55,7 @@ function App() {
           <Route path="/application-status" element={<ApplicationStatusPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/track-application" element={<TrackApplication />} />
 
           {/* ---- Admin Dashboard (protected) ---- */}
           <Route

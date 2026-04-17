@@ -46,10 +46,14 @@ class AuthService:
             )
 
         # Conflict: email already registered as an org
-        if self.org_repo.get_by_email(data.email):
-            raise ConflictException(
-                f"An organization with email '{data.email}' already exists."
-            )
+        existing_org = self.org_repo.get_by_email(data.email)
+        if existing_org:
+            if existing_org.verification_status == VerifyStatusEnum.rejected:
+                return self._handle_resubmission(existing_org, data, org_type)
+            else:
+                raise ConflictException(
+                    f"An organization with email '{data.email}' already exists."
+                )
 
         # Conflict: email already registered as a user
         if self.user_repo.get_by_email(data.email):
@@ -129,6 +133,56 @@ class AuthService:
             ),
         }
 
+    def _handle_resubmission(self, org: Organization, data: RegisterRequest, org_type: OrgTypeEnum) -> dict:
+        """
+        Handles resubmitting a rejected application.
+        Updates the organization and user details, and sets status back to pending.
+        """
+        try:
+            # Update Organization
+            org.name = data.org_name
+            org.org_type = org_type
+            org.phone = data.phone
+            org.address_line1 = data.address_line1
+            org.city = data.city
+            org.state = data.state
+            org.country = data.country
+            org.postal_code = data.postal_code
+            org.website = data.website
+            org.verification_status = VerifyStatusEnum.pending
+            org.updated_at = datetime.utcnow()
+
+            # Find and update User
+            user = self.user_repo.get_by_email(data.email)
+            if not user:
+                # Should not happen ideally, but if missing, raise error
+                raise DatabaseException(details={"error": "Associated user record missing for this organization."})
+            
+            user.first_name = data.first_name
+            user.last_name = data.last_name
+            user.phone = data.user_phone
+            user.password_hash = hash_password(data.password)
+            user.updated_at = datetime.utcnow()
+
+            self.db.commit()
+            self.db.refresh(org)
+            self.db.refresh(user)
+        except Exception as exc:
+            self.db.rollback()
+            raise DatabaseException(details={"error": str(exc)})
+
+        return {
+            "org_id": org.id,
+            "user_id": user.id,
+            "email": user.email,
+            "org_name": org.name,
+            "role": data.role,
+            "verification_status": org.verification_status.value,
+            "message": (
+                "Registration resubmitted successfully. Your account is pending admin approval."
+            ),
+        }
+
     # ------------------------------------------------------------------
     # Login — Portal Users
     # ------------------------------------------------------------------
@@ -172,10 +226,15 @@ class AuthService:
         # Check org verification status
         org = self.org_repo.get(user.org_id)
         if org and org.verification_status != VerifyStatusEnum.verified:
-            raise BusinessRuleException(
-                f"Your organization's application is currently "
-                f"'{org.verification_status.value}'. Only approved accounts can log in."
-            )
+            if org.verification_status == VerifyStatusEnum.pending:
+                raise BusinessRuleException("Your application is not approved yet. Please check your application status.")
+            elif org.verification_status == VerifyStatusEnum.rejected:
+                raise BusinessRuleException("Your application was rejected. Please resubmit.")
+            else:
+                raise BusinessRuleException(
+                    f"Your organization's application is currently "
+                    f"'{org.verification_status.value}'. Only approved accounts can log in."
+                )
 
         # Map org type to frontend role
         role = map_org_type_to_role(org.org_type) if org else "vendor"
@@ -308,3 +367,35 @@ class AuthService:
         except Exception as exc:
             self.db.rollback()
             raise DatabaseException(details={"error": "Could not update password"})
+
+    def get_application_status(self, email: str) -> dict:
+        """
+        Retrieves the application status for a given email.
+        """
+        org = self.org_repo.get_by_email(email)
+        if not org:
+            return {"status": "not_found"}
+        
+        result = {
+            "status": org.verification_status.value,
+            "role": map_org_type_to_role(org.org_type)
+        }
+        
+        # If rejected, provide some basic pre-fill data for resubmission
+        if org.verification_status == VerifyStatusEnum.rejected:
+            user = self.user_repo.get_by_email(email)
+            result.update({
+                "org_name": org.name,
+                "phone": org.phone,
+                "address_line1": org.address_line1,
+                "city": org.city,
+                "state": org.state,
+                "country": org.country,
+                "postal_code": org.postal_code,
+                "website": org.website,
+                "first_name": user.first_name if user else "",
+                "last_name": user.last_name if user else "",
+                "user_phone": user.phone if user else ""
+            })
+            
+        return result

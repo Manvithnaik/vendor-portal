@@ -56,3 +56,10 @@ def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
     svc = AuthService(db)
     svc.reset_password(data.token, data.new_password)
     return success_response("Password has been successfully updated.")
+
+
+@router.get("/application/status", response_model=APIResponse)
+def get_application_status(email: str, db: Session = Depends(get_db)):
+    svc = AuthService(db)
+    result = svc.get_application_status(email)
+    return success_response("Application status retrieved.", result)

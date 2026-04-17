@@ -64,3 +64,14 @@ If you did not request this, ignore this email — your password will not change.
 
 --------------------------------------------------
 
+--- EMAIL TO: rithikadevadiga65@gmail.com at 2026-04-18 18:00:36.480032 ---
+SUBJECT: Reset your password
+
+You requested a password reset. Click the link below to reset your password. This link expires in 1 hour.
+    
+Reset password link: http://localhost:3000/reset-password?token=RwkPeAsX5a1FbCIJ4siJPjzRCMwf1mlBUEFTN0ElYsU
+
+If you did not request this, ignore this email — your password will not change.
+
+--------------------------------------------------
+

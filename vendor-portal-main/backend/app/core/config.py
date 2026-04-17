@@ -1,10 +1,14 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
+from typing import List
 
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Unified B2B Platform"
     API_V1_STR: str = "/api/v1"
+
+    CORS_ORIGINS: List[str] = []
+
 
     # Postgres
     POSTGRES_USER: str = "postgres"
