@@ -10,6 +10,7 @@ const ManufacturerApplications = () => {
   const [loading, setLoading] = useState(true);
   const [toast, setToast]     = useState(null);
   const [viewApp, setViewApp] = useState(null);
+  const [confirmAction, setConfirmAction] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -26,15 +27,68 @@ const ManufacturerApplications = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleAction = async (orgId, status) => {
+  const handleActionClick = (orgId, status) => {
+    setConfirmAction({ orgId, status });
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return;
+    const { orgId, status } = confirmAction;
     const backendStatus = status === 'approved' ? 'verified' : status === 'rejected' ? 'rejected' : 'pending';
     try {
       await apiClient.patch(`/organizations/${orgId}/verification?status=${backendStatus}`);
       setToast({ message: `Application ${status}.`, type: 'success' });
+      setConfirmAction(null);
       load();
     } catch (err) {
       setToast({ message: err.message || 'Action failed', type: 'error' });
+      setConfirmAction(null);
     }
+  };
+
+  const renderAllFields = (app) => {
+    const skipKeys = ['id', 'org_type', 'logo_url', 'verification_status', 'is_active', 'created_at', 'updated_at', 'verification_certificates', 'financial_details'];
+    const entries = Object.entries(app).filter(([k, v]) => !skipKeys.includes(k) && v !== null && v !== '');
+    
+    return entries.map(([key, val]) => {
+      const label = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      return (
+        <div key={key} className="grid grid-cols-3 gap-2">
+          <span className="text-brand-400 font-medium">{label}</span>
+          <span className="col-span-2 text-brand-800">{val}</span>
+        </div>
+      );
+    });
+  };
+
+  const renderDocuments = (app) => {
+    const certs = app.verification_certificates || [];
+    if (certs.length === 0) return null;
+    return (
+      <div className="mt-4 border-t border-surface-200 pt-4">
+        <h3 className="font-medium text-brand-900 mb-3">Uploaded Documents</h3>
+        <div className="space-y-2">
+          {certs.map((c) => (
+            c.document_url && (
+              <div key={c.id} className="flex items-center justify-between p-3 bg-surface-50 rounded-lg">
+                <div>
+                  <p className="text-sm font-medium text-brand-800">{c.issued_by}</p>
+                  <p className="text-xs text-brand-500">Number: {c.certificate_number}</p>
+                </div>
+                <a 
+                  href={c.document_url} 
+                  target="_blank" 
+                  rel="noreferrer"
+                  className="text-brand-600 hover:underline text-sm font-medium"
+                >
+                  View Document
+                </a>
+              </div>
+            )
+          ))}
+        </div>
+      </div>
+    );
   };
 
   const statusLabel = (s) => s === 'verified' ? 'approved' : s;
@@ -73,13 +127,13 @@ const ManufacturerApplications = () => {
                     <div className="flex items-center justify-end gap-1.5">
                       <button onClick={() => setViewApp(app)} className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-400 hover:text-brand-700" title="View"><Eye size={15} /></button>
                       {app.verification_status !== 'verified' && (
-                        <button onClick={() => handleAction(app.id, 'approved')} className="p-1.5 rounded-lg hover:bg-green-50 text-green-600" title="Approve"><CheckCircle size={15} /></button>
+                        <button onClick={() => handleActionClick(app.id, 'approved')} className="p-1.5 rounded-lg hover:bg-green-50 text-green-600" title="Approve"><CheckCircle size={15} /></button>
                       )}
                       {app.verification_status !== 'rejected' && (
-                        <button onClick={() => handleAction(app.id, 'rejected')} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500" title="Reject"><XCircle size={15} /></button>
+                        <button onClick={() => handleActionClick(app.id, 'rejected')} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500" title="Reject"><XCircle size={15} /></button>
                       )}
                       {app.verification_status !== 'pending' && (
-                        <button onClick={() => handleAction(app.id, 'pending')} className="p-1.5 rounded-lg hover:bg-orange-50 text-orange-500" title="Reset"><RotateCcw size={15} /></button>
+                        <button onClick={() => handleActionClick(app.id, 'pending')} className="p-1.5 rounded-lg hover:bg-orange-50 text-orange-500" title="Reset"><RotateCcw size={15} /></button>
                       )}
                     </div>
                   </td>
@@ -100,13 +154,40 @@ const ManufacturerApplications = () => {
               <div><p className="text-xs text-brand-400 font-medium">ID</p><p className="font-mono text-brand-700">{viewApp.id}</p></div>
               <div className="text-right"><p className="text-xs text-brand-400 font-medium">Status</p><StatusBadge status={statusLabel(viewApp.verification_status)} /></div>
             </div>
-            {[['Organization', viewApp.name],['Email', viewApp.email],['Phone', viewApp.phone],['City', viewApp.city],['State', viewApp.state],['Country', viewApp.country],['Website', viewApp.website]]
-              .map(([label, val]) => (
-                <div key={label} className="grid grid-cols-3 gap-2">
-                  <span className="text-brand-400 font-medium">{label}</span>
-                  <span className="col-span-2 text-brand-800">{val || '—'}</span>
-                </div>
-              ))}
+            {renderAllFields(viewApp)}
+            {renderDocuments(viewApp)}
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!confirmAction} onClose={() => setConfirmAction(null)} title="Confirm Action" size="md">
+        {confirmAction && (
+          <div className="space-y-5">
+            <p className="text-brand-700">
+              {confirmAction.status === 'approved' 
+                ? "Do you want to approve this application?" 
+                : confirmAction.status === 'rejected'
+                ? "Do you want to reject this application?"
+                : "Do you want to reset this application to pending?"}
+            </p>
+            <div className="flex justify-end gap-3 pt-4">
+              <button 
+                onClick={() => setConfirmAction(null)} 
+                className="px-4 py-2 text-sm font-medium text-brand-600 bg-surface-100 rounded-lg hover:bg-surface-200"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleConfirmAction} 
+                className={`px-4 py-2 text-sm font-medium text-white rounded-lg ${
+                  confirmAction.status === 'approved' ? 'bg-green-600 hover:bg-green-700' :
+                  confirmAction.status === 'rejected' ? 'bg-red-600 hover:bg-red-700' :
+                  'bg-orange-600 hover:bg-orange-700'
+                }`}
+              >
+                Yes
+              </button>
+            </div>
           </div>
         )}
       </Modal>

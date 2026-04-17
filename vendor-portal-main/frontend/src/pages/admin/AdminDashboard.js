@@ -28,7 +28,6 @@ const AdminDashboard = () => {
   const cards = [
     { label: 'Vendor Applications', value: stats.vendorTotal, pending: stats.vendorPending, icon: FileText,      to: '/admin/vendor-apps',        color: 'bg-blue-50 text-blue-600' },
     { label: 'Manufacturer Apps',   value: stats.mfgTotal,    pending: stats.mfgPending,   icon: FileText,      to: '/admin/manufacturer-apps',  color: 'bg-emerald-50 text-emerald-600' },
-    { label: 'Total Orders',        value: stats.orders,                                    icon: ShoppingCart,                                   color: 'bg-orange-50 text-orange-600' },
   ];
 
   return (
