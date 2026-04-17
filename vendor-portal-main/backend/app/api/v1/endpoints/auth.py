@@ -3,8 +3,11 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.api.deps import get_current_user
+from app.schemas.auth import (
+    LoginRequest, RegisterRequest, AdminLoginRequest, 
+    ForgotPasswordRequest, ResetPasswordRequest, PasswordChangeRequest
+)
 from app.schemas.common import APIResponse, success_response
-from app.schemas.auth import LoginRequest, RegisterRequest, AdminLoginRequest, ForgotPasswordRequest, ResetPasswordRequest
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -63,3 +66,14 @@ def get_application_status(email: str, db: Session = Depends(get_db)):
     svc = AuthService(db)
     result = svc.get_application_status(email)
     return success_response("Application status retrieved.", result)
+
+
+@router.post("/change-password", response_model=APIResponse)
+def change_password(
+    data: PasswordChangeRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    svc = AuthService(db)
+    svc.change_password(current_user.id, data)
+    return success_response("Password changed successfully.")

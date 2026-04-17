@@ -12,7 +12,7 @@ from app.models.vendor_portal import Admin
 from app.models.enums import OrgTypeEnum, RoleOrgTypeEnum, VerifyStatusEnum
 from app.repositories.user_repo import UserRepository, AdminRepository
 from app.repositories.organization_repo import OrganizationRepository
-from app.schemas.auth import RegisterRequest, LoginRequest, AdminLoginRequest
+from app.schemas.auth import RegisterRequest, LoginRequest, AdminLoginRequest, PasswordChangeRequest
 from app.utils.mappers import map_role_to_org_type, map_org_type_to_role
 from app.exceptions import (
     ConflictException, UnauthorizedException, NotFoundException,
@@ -399,3 +399,20 @@ class AuthService:
             })
             
         return result
+
+    def change_password(self, user_id: int, data: PasswordChangeRequest) -> None:
+        """
+        Updates the password for a portal user.
+        """
+        user = self.get_user_by_id(user_id)
+        if not verify_password(data.current_password, user.password_hash):
+            raise UnauthorizedException("Incorrect current password.")
+
+        try:
+            user.password_hash = hash_password(data.new_password)
+            user.updated_at = datetime.utcnow()
+            self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            raise DatabaseException(details={"error": str(exc)})
+
