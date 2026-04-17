@@ -41,10 +41,31 @@ const RegisterPage = () => {
     gstNumber: '', businessLicense: '', annualTurnover: '',
   });
 
-  const onChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const onChange = (e) => {
+    const { name, value } = e.target;
+
+    // Email validation: Contact Email ID should not match Organization Email ID
+    if (name === 'contactEmail' && value && form.email) {
+      if (value.trim().toLowerCase() === form.email.trim().toLowerCase()) {
+        alert("The email ID has already been used. Please enter a different email ID to proceed.");
+        setForm({ ...form, contactEmail: '' });
+        return;
+      }
+    }
+
+    setForm({ ...form, [name]: value });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Secondary check to ensure Organization Email and Contact Email are different
+    if (form.email && form.contactEmail && form.email.trim().toLowerCase() === form.contactEmail.trim().toLowerCase()) {
+      alert("The email ID has already been used. Please enter a different email ID to proceed.");
+      setForm({ ...form, contactEmail: '' });
+      return;
+    }
+
     if (form.password !== form.confirmPassword) {
       setToast({ message: 'Passwords do not match.', type: 'error' });
       return;
