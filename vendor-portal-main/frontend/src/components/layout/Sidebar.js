@@ -18,7 +18,6 @@ const navItems = {
   ],
   vendor: [
     { to: '/vendor', icon: LayoutDashboard, label: 'Dashboard', end: true },
-    { to: '/vendor/profile', icon: UserCircle, label: 'Profile' },
     { to: '/vendor/products', icon: Package, label: 'Products' },
     { to: '/vendor/orders', icon: ShoppingCart, label: 'Orders & RFQs' },
     { to: '/vendor/shipping', icon: Truck, label: 'Shipping' },
@@ -26,7 +25,6 @@ const navItems = {
   ],
   manufacturer: [
     { to: '/manufacturer', icon: LayoutDashboard, label: 'Dashboard', end: true },
-    { to: '/manufacturer/profile', icon: UserCircle, label: 'Profile' },
     { to: '/manufacturer/browse', icon: Search, label: 'Browse Products' },
     { to: '/manufacturer/quotations', icon: FileSearch, label: 'Quotations' },
     { to: '/manufacturer/orders', icon: ShoppingCart, label: 'Purchase Orders' },
@@ -95,10 +93,17 @@ const Sidebar = ({ role }) => {
       {/* User & logout */}
       <div className="px-3 py-4 border-t border-surface-200 space-y-2">
         {!collapsed && user && (
-          <div className="px-3 py-2 text-xs text-brand-400">
-            <p className="font-medium text-brand-700 truncate">{user.name || user.email}</p>
-            <p className="capitalize">{user.role}</p>
-          </div>
+          (role === 'vendor' || role === 'manufacturer') ? (
+            <NavLink to={`/${role}/profile`} className="block px-3 py-2 text-xs text-brand-400 hover:bg-brand-50 rounded-lg transition-colors cursor-pointer">
+              <p className="font-medium text-brand-700 truncate">{user.email}</p>
+              <p className="capitalize">{user.role}</p>
+            </NavLink>
+          ) : (
+            <div className="px-3 py-2 text-xs text-brand-400">
+              <p className="font-medium text-brand-700 truncate">{user.name || user.email}</p>
+              <p className="capitalize">{user.role}</p>
+            </div>
+          )
         )}
         <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-danger-500 hover:bg-danger-50 transition-all w-full">
           <LogOut size={18} />
