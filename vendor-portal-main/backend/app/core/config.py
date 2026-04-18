@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from typing import Optional
 from typing import List
@@ -8,6 +9,16 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     CORS_ORIGINS: List[str] = []
+    
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: any) -> any:
+        if isinstance(v, str) and not v.startswith("["):
+            return [i.strip() for i in v.split(",")]
+        elif isinstance(v, str) and v.startswith("["):
+            import json
+            return json.loads(v)
+        return v
 
 
     # Postgres

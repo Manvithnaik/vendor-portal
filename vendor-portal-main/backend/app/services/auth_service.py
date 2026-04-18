@@ -223,8 +223,8 @@ class AuthService:
         if not user.is_active:
             raise UnauthorizedException("Your account has been deactivated.")
 
-        # Check org verification status
-        org = self.org_repo.get(user.org_id)
+        # Org info is pre-fetched via joinedload in get_by_email
+        org = user.organization
         if org and org.verification_status != VerifyStatusEnum.verified:
             if org.verification_status == VerifyStatusEnum.pending:
                 raise BusinessRuleException("Your application is not approved yet. Please check your application status.")
