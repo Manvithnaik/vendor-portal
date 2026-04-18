@@ -1,6 +1,6 @@
 from typing import List, Optional
-from sqlalchemy.orm import Session
 from sqlalchemy import or_, exists
+from sqlalchemy.orm import Session, joinedload
 from app.models.vendor_portal import RFQ, RFQBroadcast, Quote
 from app.repositories.base import BaseRepository
 
@@ -52,6 +52,7 @@ class QuoteRepository(BaseRepository[Quote]):
     def get_by_rfq(self, rfq_id: int) -> List[Quote]:
         return (
             self.db.query(Quote)
+            .options(joinedload(Quote.manufacturer_org))
             .filter(Quote.rfq_id == rfq_id, Quote.deleted_at.is_(None))
             .all()
         )

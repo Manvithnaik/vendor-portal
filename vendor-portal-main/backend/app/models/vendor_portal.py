@@ -146,6 +146,7 @@ class RFQ(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text)
     category_id = Column(Integer, ForeignKey("product_categories.id", ondelete="SET NULL"))
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="SET NULL"))
     location_filter = Column(String(100))
     min_vendor_rating = Column(Numeric(3, 2))
     deadline = Column(TIMESTAMP(timezone=True), nullable=False)
@@ -163,6 +164,7 @@ class RFQ(Base):
 
     org = relationship("Organization", foreign_keys=[org_id])
     category = relationship("ProductCategory", foreign_keys=[category_id])
+    product = relationship("Product", foreign_keys=[product_id])
     broadcasts = relationship("RFQBroadcast", back_populates="rfq", cascade="all, delete-orphan")
     quotes = relationship("Quote", back_populates="rfq", cascade="all, delete-orphan")
 
@@ -205,6 +207,7 @@ class Quote(Base):
         nullable=False,
         default=QuoteStatusEnum.submitted,
     )  # NEW: submitted → accepted/rejected by manufacturer
+    document_url = Column(String(500))
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
     deleted_at = Column(TIMESTAMP(timezone=True))  # soft-delete; required by rfq_repo filter
 

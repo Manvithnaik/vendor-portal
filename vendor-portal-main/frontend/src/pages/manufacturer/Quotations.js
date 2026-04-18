@@ -26,7 +26,7 @@ const RFQStatusBadge = ({ status }) => {
 
 // ── Quote card — shows actual QuoteResponse fields from API ─────────────────
 // QuoteResponse: { id, rfq_id, manufacturer_org_id, price, lead_time_days, compliance_notes, version, is_locked, status, created_at }
-const QuoteCard = ({ q, onPlaceOrder }) => (
+const QuoteCard = ({ q, onPlaceOrder, onViewDetails }) => (
   <div className="flex items-center justify-between p-3 bg-white border border-surface-200 rounded-lg hover:border-brand-300 transition-colors flex-wrap gap-2">
     <div className="flex items-center gap-3 min-w-0">
       <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
@@ -52,6 +52,11 @@ const QuoteCard = ({ q, onPlaceOrder }) => (
       <span className={`badge text-xs ${q.status === 'accepted' ? 'bg-green-100 text-green-700' : q.status === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-700'}`}>
         {q.status}
       </span>
+      {onViewDetails && (
+        <button onClick={() => onViewDetails(q)} className="btn-secondary text-xs py-1.5 px-3">
+          View Details
+        </button>
+      )}
       {onPlaceOrder && q.status !== 'rejected' && (
         <button
           onClick={() => onPlaceOrder(q)}
@@ -65,7 +70,7 @@ const QuoteCard = ({ q, onPlaceOrder }) => (
 );
 
 // ── RFQ accordion row ────────────────────────────────────────────────────────
-const RFQRow = ({ rfq, onPlaceOrder }) => {
+const RFQRow = ({ rfq, onPlaceOrder, onViewDetails }) => {
   const [open, setOpen]           = useState(false);
   const [quotations, setQuotations] = useState([]);
 
@@ -128,6 +133,7 @@ const RFQRow = ({ rfq, onPlaceOrder }) => {
                     key={q.id}
                     q={q}
                     onPlaceOrder={rfq.status !== 'closed' ? (quot) => onPlaceOrder(rfq, quot) : null}
+                    onViewDetails={(quot) => onViewDetails(rfq, quot)}
                   />
                 ))}
               </div>
@@ -153,6 +159,8 @@ const Quotations = () => {
   const [search, setSearch]     = useState('');
   const [toast, setToast]       = useState(null);
 
+  const [viewQuoteData, setViewQuoteData] = useState(null); // { rfq, quote }
+
   // Place Order modal state
   const [orderRFQ, setOrderRFQ]             = useState(null);
   const [orderQuotation, setOrderQuotation] = useState(null);
@@ -168,7 +176,23 @@ const Quotations = () => {
     try {
       const res = await rfqService.listRFQs();
       const data = res?.data;
-      setRfqs(Array.isArray(data) ? data : []);
+      const rfqsArray = Array.isArray(data) ? data : [];
+      setRfqs(rfqsArray);
+      
+      if (user?.email) {
+         const activeRFQs = rfqsArray.filter(r => r.status === 'active' || r.status === 'extended');
+         let totalQuotes = 0;
+         await Promise.all(activeRFQs.map(async (rfq) => {
+            try {
+               const qRes = await quoteService.listQuotes(rfq.id);
+               if (qRes && Array.isArray(qRes.data)) {
+                  totalQuotes += qRes.data.length;
+               }
+            } catch(e) {}
+         }));
+         localStorage.setItem(`lastSeenQuoteCount_${user.email}`, totalQuotes.toString());
+         window.dispatchEvent(new Event('quoteRead'));
+      }
     } catch (e) {
       setToast({ message: e.message || 'Failed to load RFQs', type: 'error' });
     }
@@ -298,7 +322,7 @@ const Quotations = () => {
       {/* RFQ list */}
       {sorted.length > 0 ? (
         <div className="space-y-3">
-          {sorted.map(rfq => <RFQRow key={rfq.id} rfq={rfq} onPlaceOrder={handlePlaceOrder} />)}
+          {sorted.map(rfq => <RFQRow key={rfq.id} rfq={rfq} onPlaceOrder={handlePlaceOrder} onViewDetails={(r, q) => setViewQuoteData({ rfq: r, quote: q })} />)}
         </div>
       ) : (
         <div className="card p-16 text-center">
@@ -412,6 +436,88 @@ const Quotations = () => {
               </button>
             </div>
           </form>
+        )}
+      </Modal>
+
+      {/* View Quote Details Modal */}
+      <Modal open={!!viewQuoteData} onClose={() => setViewQuoteData(null)} title="Quotation Details">
+        {viewQuoteData && (
+          <div className="space-y-4 text-sm mt-2">
+            
+            {/* Vendor Details */}
+            {viewQuoteData.quote.manufacturer_org && (
+              <div>
+                <p className="font-semibold text-brand-900 border-b pb-1 mb-2">Vendor Details</p>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  <div><dt className="text-brand-400">Vendor Name</dt><dd className="font-medium text-brand-800">{viewQuoteData.quote.manufacturer_org.name || '—'}</dd></div>
+                  <div><dt className="text-brand-400">Contact</dt><dd className="font-medium text-brand-800">{viewQuoteData.quote.manufacturer_org.contact_name || '—'}</dd></div>
+                  <div className="col-span-2"><dt className="text-brand-400">Email & Phone</dt><dd className="font-medium text-brand-800">
+                    {viewQuoteData.quote.manufacturer_org.contact_email || '—'} / {viewQuoteData.quote.manufacturer_org.contact_phone || '—'}
+                  </dd></div>
+                  <div className="col-span-2"><dt className="text-brand-400">Address</dt><dd className="font-medium text-brand-800">
+                    {(viewQuoteData.quote.manufacturer_org.address_line1 || '') + (viewQuoteData.quote.manufacturer_org.city ? ', ' + viewQuoteData.quote.manufacturer_org.city : '') || '—'}
+                  </dd></div>
+                </dl>
+              </div>
+            )}
+
+            {/* Quotation Details */}
+            <div>
+              <p className="font-semibold text-brand-900 border-b pb-1 mb-2 mt-4">Quotation Information</p>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div><dt className="text-brand-400">Total Price</dt><dd className="font-semibold text-green-700">₹{parseFloat(viewQuoteData.quote.price || 0).toLocaleString()}</dd></div>
+                <div><dt className="text-brand-400">Lead Time</dt><dd className="font-medium text-brand-800">{viewQuoteData.quote.lead_time_days} days</dd></div>
+                <div><dt className="text-brand-400">Submitted Date</dt><dd className="font-medium text-brand-800">{viewQuoteData.quote.created_at ? new Date(viewQuoteData.quote.created_at).toLocaleDateString() : '—'}</dd></div>
+                <div><dt className="text-brand-400">Status</dt><dd className="font-medium text-brand-800 capitalize">{viewQuoteData.quote.status}</dd></div>
+                {viewQuoteData.quote.compliance_notes && (
+                  <div className="col-span-2"><dt className="text-brand-400">Compliance Notes</dt><dd className="text-brand-700 whitespace-pre-wrap italic">{viewQuoteData.quote.compliance_notes}</dd></div>
+                )}
+              </dl>
+            </div>
+
+            {/* Product Details (RFQ based) */}
+            <div>
+              <p className="font-semibold text-brand-900 border-b pb-1 mb-2 mt-4">Product / RFQ Details</p>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div><dt className="text-brand-400">Product Name</dt><dd className="font-medium text-brand-800">{viewQuoteData.rfq.product?.name || viewQuoteData.rfq.title || '—'}</dd></div>
+                <div><dt className="text-brand-400">Category</dt><dd className="font-medium text-brand-800">{viewQuoteData.rfq.category?.name || '—'}</dd></div>
+                <div className="col-span-2"><dt className="text-brand-400">Product Description</dt><dd className="text-brand-700 whitespace-pre-wrap">{viewQuoteData.rfq.product?.description || '—'}</dd></div>
+                {viewQuoteData.rfq.description && (
+                  <div className="col-span-2">
+                    <dt className="text-brand-400 font-medium">RFQ Note / Message</dt>
+                    <dd className="p-3 mt-1 bg-amber-50 border border-amber-200 rounded text-brand-800 whitespace-pre-wrap italic text-xs">
+                      {viewQuoteData.rfq.description.replace(/\[Minimum Expected Rate: .*?\]/, '').trim() || '—'}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+
+            {/* Quotation Document */}
+            {viewQuoteData.quote.document_url && (
+              <div className="mt-4 p-4 border border-surface-200 rounded-lg bg-surface-50">
+                <p className="text-sm font-semibold text-brand-800 mb-2">Quotation Document</p>
+                <a
+                  href={(() => {
+                    const url = viewQuoteData.quote.document_url;
+                    if (url.startsWith('http')) return url;
+                    const baseUrl = (process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api/v1').replace(/\/api\/v1\/?$/, '');
+                    return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+                  })()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-brand-300 rounded-md text-sm font-medium text-brand-700 hover:text-brand-900 hover:border-brand-400 transition-colors shadow-sm"
+                >
+                  <FileText size={16} className="text-brand-500" />
+                  View / Download Quotation PDF
+                </a>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-4 border-t border-surface-200 mt-4">
+               <button onClick={() => setViewQuoteData(null)} className="btn-secondary">Close</button>
+            </div>
+          </div>
         )}
       </Modal>
     </div>

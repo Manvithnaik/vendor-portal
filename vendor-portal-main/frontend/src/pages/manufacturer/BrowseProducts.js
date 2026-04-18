@@ -13,6 +13,7 @@ const BrowseProducts = () => {
   const [toast, setToast] = useState(null);
   const [rfqProduct, setRfqProduct] = useState(null);
   const [notes, setNotes] = useState('');
+  const [minRate, setMinRate] = useState('');
   const [myRFQs, setMyRFQs] = useState([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -60,14 +61,17 @@ const BrowseProducts = () => {
     try {
       await rfqService.createRFQ({
         title:       `RFQ for ${rfqProduct.name}`,
-        description: notes.trim() || undefined,
+        description: (notes.trim() + (minRate ? `\n\n[Minimum Expected Rate: ${minRate}]` : '')).trim() || undefined,
         deadline,
         category_id: rfqProduct.category_id || undefined,
+        product_id: rfqProduct.id || undefined,
+        // min_vendor_rating removed since rate is saved in description
         broadcast_to_org_ids: rfqProduct.manufacturer_org_id ? [rfqProduct.manufacturer_org_id] : [],
       });
       setToast({ message: `RFQ sent for "${rfqProduct.name}"! The vendor will be notified.`, type: 'success' });
       setRfqProduct(null);
       setNotes('');
+      setMinRate('');
       load();
     } catch (error) {
       setToast({ message: error.message || 'Failed to request quote.', type: 'error' });
@@ -139,20 +143,17 @@ const BrowseProducts = () => {
                 {/* Action buttons */}
                 <div className="space-y-2">
                   {/* RFQ button */}
-                  {alreadySent ? (
-                    <div className="flex items-center gap-2 justify-center py-2.5 rounded-lg bg-green-50 text-green-700 text-sm font-medium border border-green-200">
-                      <CheckCircle size={15} />
-                      RFQ Sent
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setRfqProduct(p)}
-                      className="btn-accent w-full text-xs"
-                    >
-                      <FileText size={14} />
-                      Request for Quotation (RFQ)
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setRfqProduct(p)}
+                    className={
+                      alreadySent
+                        ? "flex w-full items-center gap-2 justify-center py-2.5 rounded-lg bg-green-50 text-green-700 text-xs font-medium border border-green-200 hover:bg-green-100 transition-colors"
+                        : "btn-accent w-full text-xs"
+                    }
+                  >
+                    {alreadySent ? <CheckCircle size={14} /> : <FileText size={14} />}
+                    {alreadySent ? 'Send Another RFQ' : 'Request for Quotation (RFQ)'}
+                  </button>
                 </div>
               </div>
             );
@@ -170,7 +171,7 @@ const BrowseProducts = () => {
       {/* RFQ Modal */}
       <Modal
         open={!!rfqProduct}
-        onClose={() => { setRfqProduct(null); setNotes(''); }}
+        onClose={() => { setRfqProduct(null); setNotes(''); setMinRate(''); }}
         title="Request for Quotation (RFQ)"
       >
         {rfqProduct && (
@@ -202,6 +203,31 @@ const BrowseProducts = () => {
 
             <div>
               <label className="block text-sm font-medium text-brand-700 mb-1.5">
+                Minimum Rate Expected <span className="text-brand-400 font-normal">(optional)</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                className="input-field"
+                placeholder="e.g. 500"
+                value={minRate}
+                onKeyDown={(e) => {
+                  if (['e', 'E', '+', '-'].includes(e.key)) {
+                    e.preventDefault();
+                  }
+                }}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                      setMinRate(val);
+                  }
+                }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-brand-700 mb-1.5">
                 Additional Notes <span className="text-brand-400 font-normal">(optional)</span>
               </label>
               <textarea
@@ -215,7 +241,7 @@ const BrowseProducts = () => {
             <div className="flex justify-end gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => { setRfqProduct(null); setNotes(''); }}
+                onClick={() => { setRfqProduct(null); setNotes(''); setMinRate(''); }}
                 className="btn-secondary"
               >
                 Cancel

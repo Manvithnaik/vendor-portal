@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { rfqService } from '../../services/rfqService';
 import { quoteService } from '../../services/quoteService';
 import { orderService } from '../../services/orderService';
+import { uploadService } from '../../services/uploadService';
 import StatusBadge from '../../components/common/StatusBadge';
 import Toast from '../../components/common/Toast';
 import Modal from '../../components/common/Modal';
@@ -57,13 +58,15 @@ const VendorOrders = () => {
   const [tab, setTab]       = useState('orders');
   const [orders, setOrders] = useState([]);
   const [rfqs, setRfqs]     = useState([]);
+  const [myQuotes, setMyQuotes] = useState([]);
   const [toast, setToast]   = useState(null);
 
   // Quote submit modal state (vendor submits price+lead_time to manufacturer RFQ)
   const [quoteRFQ, setQuoteRFQ]       = useState(null);
-  const [quoteForm, setQuoteForm]     = useState({ price: '', lead_time_days: '', compliance_notes: '' });
+  const [quoteForm, setQuoteForm]     = useState({ price: '', lead_time_days: '', compliance_notes: '', document: null });
   const [quoteError, setQuoteError]   = useState('');
   const [submittingQuote, setSubmittingQuote] = useState(false);
+  const [viewRFQ, setViewRFQ] = useState(null);
 
   // PO detail modal
   const [viewOrder, setViewOrder]     = useState(null);
@@ -73,12 +76,14 @@ const VendorOrders = () => {
 
   const load = async () => {
     try {
-      const [orderRes, rfqRes] = await Promise.all([
+      const [orderRes, rfqRes, quoteRes] = await Promise.all([
         orderService.listOrders({ as_customer: false }),
         rfqService.listRFQs(),
+        quoteService.myQuotes()
       ]);
       setOrders(Array.isArray(orderRes?.data) ? orderRes.data : []);
       setRfqs(Array.isArray(rfqRes?.data) ? rfqRes.data : []);
+      setMyQuotes(Array.isArray(quoteRes?.data) ? quoteRes.data : []);
     } catch (e) {
       setToast({ message: e.message || 'Failed to load data', type: 'error' });
     }
@@ -115,7 +120,7 @@ const VendorOrders = () => {
   // ── Quote submit (vendor replies to RFQ with price + lead_time) ──────────
   const resetQuoteModal = () => {
     setQuoteRFQ(null);
-    setQuoteForm({ price: '', lead_time_days: '', compliance_notes: '' });
+    setQuoteForm({ price: '', lead_time_days: '', compliance_notes: '', document: null });
     setQuoteError('');
   };
 
@@ -125,14 +130,26 @@ const VendorOrders = () => {
     const lead  = parseInt(quoteForm.lead_time_days, 10);
     if (!price || price <= 0)    { setQuoteError('Enter a valid price.'); return; }
     if (!lead  || lead  <= 0)    { setQuoteError('Enter a valid lead time (days).'); return; }
+    if (!quoteForm.document)     { setQuoteError('You must upload a quotation document (PDF).'); return; }
 
     setSubmittingQuote(true);
+    let document_url = '';
+    try {
+      const uploadRes = await uploadService.uploadPODocument(quoteForm.document);
+      document_url = uploadRes.file_url;
+    } catch (err) {
+      setQuoteError('Failed to upload document. ' + (err.message || ''));
+      setSubmittingQuote(false);
+      return;
+    }
+
     try {
       await quoteService.submitQuote({
         rfq_id:           quoteRFQ.id,
         price,
         lead_time_days:   lead,
         compliance_notes: quoteForm.compliance_notes || null,
+        document_url:     document_url,
       });
       setToast({ message: 'Quotation submitted successfully!', type: 'success' });
       resetQuoteModal();
@@ -149,6 +166,13 @@ const VendorOrders = () => {
   // but 'vendor_review' maps to 'pending' in the mapper. Keep both for safety.
   const pendingOrderCount = orders.filter(o => o.status === 'pending' || o.status === 'vendor_review').length;
   const activeRFQCount    = rfqs.filter(r => r.status === 'active' || r.status === 'extended').length;
+
+  useEffect(() => {
+    if (tab === 'rfqs') {
+      localStorage.setItem(`lastSeenRFQCount_${user?.email}`, activeRFQCount.toString());
+      window.dispatchEvent(new Event('rfqRead'));
+    }
+  }, [tab, activeRFQCount, user?.email]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -239,24 +263,31 @@ const VendorOrders = () => {
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-brand-900 truncate">{rfq.title}</p>
                       <p className="text-xs text-brand-400">
-                        RFQ #{rfq.id} · Deadline: {rfq.deadline ? new Date(rfq.deadline).toLocaleDateString() : '—'}
+                        RFQ #{rfq.id}
                         {' · '}
                         {rfq.created_at ? new Date(rfq.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
                       </p>
                       {rfq.description && (
-                        <p className="text-xs text-brand-500 mt-0.5 truncate max-w-xs">{rfq.description}</p>
+                        <p className="text-xs text-brand-500 mt-0.5 truncate max-w-xs">{rfq.description.replace(/\[Minimum Expected Rate: .*?\]/, '')}</p>
                       )}
                     </div>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0 ml-4">
                     <RFQBadge status={rfq.status} />
+                    <button onClick={() => setViewRFQ(rfq)} className="btn-secondary text-xs py-2 px-3">Open</button>
                     {(rfq.status === 'active' || rfq.status === 'extended') ? (
-                      <button
-                        onClick={() => { setQuoteRFQ(rfq); setQuoteForm({ price: '', lead_time_days: '', compliance_notes: '' }); setQuoteError(''); }}
-                        className="btn-accent text-xs py-2"
-                      >
-                        Submit Quotation
-                      </button>
+                      myQuotes.some(q => q.rfq_id === rfq.id) ? (
+                        <button className="btn-secondary text-xs py-2 bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200" disabled>
+                          Quotation Submitted
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => { setQuoteRFQ(rfq); setQuoteForm({ price: '', lead_time_days: '', compliance_notes: '', document: null }); setQuoteError(''); }}
+                          className="btn-accent text-xs py-2"
+                        >
+                          Submit Quotation
+                        </button>
+                      )
                     ) : (
                       <div className="flex items-center gap-1.5 text-xs text-green-700 font-medium">
                         <CheckCircle size={13} />
@@ -278,8 +309,7 @@ const VendorOrders = () => {
             <div className="p-3 bg-surface-100 rounded-lg">
               <p className="text-xs text-brand-500 mb-1">RFQ Details</p>
               <p className="text-sm font-semibold text-brand-900">{quoteRFQ.title}</p>
-              <p className="text-xs text-brand-400">Deadline: {quoteRFQ.deadline ? new Date(quoteRFQ.deadline).toLocaleDateString() : '—'}</p>
-              {quoteRFQ.description && <p className="text-xs text-brand-500 mt-1 italic">"{quoteRFQ.description}"</p>}
+              {quoteRFQ.description && <p className="text-xs text-brand-500 mt-1 italic">"{quoteRFQ.description.replace(/\[Minimum Expected Rate: .*?\]/, '')}"</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -288,10 +318,15 @@ const VendorOrders = () => {
                   Price (Total) <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="number" min="0.01" step="0.01" className="input-field"
-                  placeholder="e.g. 50000.00"
+                  type="number" min="0" step="1000" className="input-field"
+                  placeholder="e.g. 50000"
                   value={quoteForm.price}
                   onChange={e => setQuoteForm({ ...quoteForm, price: e.target.value })}
+                  onKeyDown={e => {
+                    if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
                   required
                 />
               </div>
@@ -319,6 +354,16 @@ const VendorOrders = () => {
               />
             </div>
 
+            <div>
+              <label className="block text-sm font-medium text-brand-700 mb-1.5">
+                Quotation Document / PDF <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="file" accept="application/pdf" className="input-field p-2"
+                onChange={e => setQuoteForm({ ...quoteForm, document: e.target.files[0] })}
+              />
+            </div>
+
             <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-100 rounded-lg text-xs text-amber-700">
               <Clock size={13} className="mt-0.5 flex-shrink-0" />
               <span>Once submitted, the manufacturer can view your quote and place an order referencing it.</span>
@@ -334,6 +379,59 @@ const VendorOrders = () => {
             </div>
           </form>
         )}
+      </Modal>
+
+      {/* ── View RFQ Modal ── */}
+      <Modal open={!!viewRFQ} onClose={() => setViewRFQ(null)} title="RFQ Request Details">
+        {viewRFQ && (() => {
+          let desc = viewRFQ.description || '';
+          let rate = '—';
+          const match = desc.match(/\[Minimum Expected Rate:\s*(.*?)\]/);
+          if (match) {
+              rate = match[1];
+              desc = desc.replace(/\[Minimum Expected Rate:\s*(.*?)\]/, '').trim();
+          }
+          return (
+          <div className="space-y-4 text-sm mt-2">
+            <div>
+              <p className="font-semibold text-brand-900 border-b pb-1 mb-2">Product Details</p>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div><dt className="text-brand-400">Product Name</dt><dd className="font-medium text-brand-800">{viewRFQ.title || '—'}</dd></div>
+                <div><dt className="text-brand-400">Category</dt><dd className="font-medium text-brand-800">{viewRFQ.category?.name || '—'}</dd></div>
+                <div className="col-span-2"><dt className="text-brand-400">Product Description</dt><dd className="text-brand-700 whitespace-pre-wrap">{viewRFQ.product?.description || '—'}</dd></div>
+                <div className="col-span-2"><dt className="text-brand-400">RFQ Note / Message</dt><dd className="text-brand-700 whitespace-pre-wrap">{desc || '—'}</dd></div>
+              </dl>
+            </div>
+            
+            {viewRFQ.org && (
+              <div>
+                <p className="font-semibold text-brand-900 border-b pb-1 mb-2 mt-4">Manufacturer Details</p>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  <div><dt className="text-brand-400">Manufacturer Name</dt><dd className="font-medium text-brand-800">{viewRFQ.org.name || '—'}</dd></div>
+                  <div><dt className="text-brand-400">Contact Name</dt><dd className="font-medium text-brand-800">{viewRFQ.org.contact_name || '—'}</dd></div>
+                  <div><dt className="text-brand-400">Contact Email</dt><dd className="font-medium text-brand-800">{viewRFQ.org.contact_email || '—'}</dd></div>
+                  <div><dt className="text-brand-400">Contact Phone</dt><dd className="font-medium text-brand-800">{viewRFQ.org.contact_phone || '—'}</dd></div>
+                  <div className="col-span-2"><dt className="text-brand-400">Address</dt><dd className="font-medium text-brand-800">{(viewRFQ.org.address_line1 || '') + (viewRFQ.org.city ? ', ' + viewRFQ.org.city : '') || '—'}</dd></div>
+                </dl>
+              </div>
+            )}
+            
+            <div>
+              <p className="font-semibold text-brand-900 border-b pb-1 mb-2 mt-4">Other RFQ Details</p>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div><dt className="text-brand-400">Location Filter</dt><dd className="font-medium text-brand-800">{viewRFQ.location_filter || '—'}</dd></div>
+                <div><dt className="text-brand-400">Min. Rate Expected</dt><dd className="font-medium text-brand-800">{rate}</dd></div>
+                <div><dt className="text-brand-400">Priority</dt><dd className="font-medium text-brand-800">{viewRFQ.is_priority ? 'Yes' : 'No'}</dd></div>
+                <div><dt className="text-brand-400">Date Created</dt><dd className="font-medium text-brand-800">{viewRFQ.created_at ? new Date(viewRFQ.created_at).toLocaleDateString() : '—'}</dd></div>
+              </dl>
+            </div>
+            
+            <div className="flex justify-end pt-4">
+               <button onClick={() => setViewRFQ(null)} className="btn-secondary">Close Window</button>
+            </div>
+          </div>
+          );
+        })()}
       </Modal>
 
       {/* ── PO Detail Modal ── */}

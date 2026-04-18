@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { rfqService } from '../../services/rfqService';
+import { quoteService } from '../../services/quoteService';
 
 import {
   LayoutDashboard, Users, Package, ShoppingCart, Truck,
@@ -39,6 +41,7 @@ const Sidebar = ({ role }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [hasNewRFQs, setHasNewRFQs] = useState(false);
+  const [hasNewQuotes, setHasNewQuotes] = useState(false);
   const { logout, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -46,8 +49,76 @@ const Sidebar = ({ role }) => {
 
   // Backend polling for unseen RFQs can be implemented here later
   useEffect(() => {
-    // left intentionally empty since local storage logic is removed
+    let interval;
+    if (role === 'vendor' && user?.email) {
+      const checkRFQs = async () => {
+         try {
+            const rfqRes = await rfqService.listRFQs();
+            const rfqs = Array.isArray(rfqRes?.data) ? rfqRes.data : [];
+            const activeCount = rfqs.filter(r => r.status === 'active' || r.status === 'extended').length;
+            const lastSeen = parseInt(localStorage.getItem(`lastSeenRFQCount_${user.email}`) || '0', 10);
+            if (activeCount > lastSeen) {
+               setHasNewRFQs(true);
+            } else {
+               setHasNewRFQs(false);
+            }
+         } catch (e) {
+            // ignore
+         }
+      };
+      
+      const handleRead = () => setHasNewRFQs(false);
+      window.addEventListener('rfqRead', handleRead);
+
+      checkRFQs();
+      interval = setInterval(checkRFQs, 30000);
+      
+      return () => {
+         window.removeEventListener('rfqRead', handleRead);
+         clearInterval(interval);
+      };
+    }
   }, [role, user?.email, location.pathname]);
+
+  // Backend polling for unseen quotations for manufacturers
+  useEffect(() => {
+    let interval;
+    if (role === 'manufacturer' && user?.email) {
+      const checkQuotes = async () => {
+         try {
+            const rfqRes = await rfqService.listRFQs();
+            const rfqs = Array.isArray(rfqRes?.data) ? rfqRes.data : [];
+            const activeRFQs = rfqs.filter(r => r.status === 'active' || r.status === 'extended');
+            
+            let totalQuotes = 0;
+            await Promise.all(activeRFQs.map(async (rfq) => {
+               try {
+                  const qRes = await quoteService.listQuotes(rfq.id);
+                  if (qRes && Array.isArray(qRes.data)) {
+                     totalQuotes += qRes.data.length;
+                  }
+               } catch(e) {}
+            }));
+            
+            const lastSeen = parseInt(localStorage.getItem(`lastSeenQuoteCount_${user.email}`) || '0', 10);
+            setHasNewQuotes(totalQuotes > lastSeen);
+         } catch (e) {
+            // ignore
+         }
+      };
+
+      const handleRead = () => setHasNewQuotes(false);
+      window.addEventListener('quoteRead', handleRead);
+
+      checkQuotes();
+      interval = setInterval(checkQuotes, 40000);
+
+      return () => {
+         window.removeEventListener('quoteRead', handleRead);
+         clearInterval(interval);
+      };
+    }
+  }, [role, user?.email]);
 
   const handleLogout = () => {
     logout();
@@ -84,6 +155,9 @@ const Sidebar = ({ role }) => {
             <div className="relative">
               <item.icon size={18} />
               {role === 'vendor' && item.to === '/vendor/orders' && hasNewRFQs && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+              )}
+              {role === 'manufacturer' && item.to === '/manufacturer/quotations' && hasNewQuotes && (
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
               )}
             </div>
