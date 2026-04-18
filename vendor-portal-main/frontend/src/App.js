@@ -39,6 +39,7 @@ import Quotations from './pages/manufacturer/Quotations';
 import PurchaseOrders from './pages/manufacturer/PurchaseOrders';
 import OrderTracking from './pages/manufacturer/OrderTracking';
 import ManufacturerReturns from './pages/manufacturer/ManufacturerReturns';
+import ApplicationTracking from './pages/common/ApplicationTracking';
 
 function App() {
   return (
@@ -84,6 +85,7 @@ function App() {
             <Route path="orders" element={<VendorOrders />} />
             <Route path="shipping" element={<VendorShipping />} />
             <Route path="returns" element={<VendorReturns />} />
+            <Route path="applications" element={<ApplicationTracking />} />
           </Route>
 
           {/* ---- Manufacturer Dashboard (protected) ---- */}
@@ -102,6 +104,7 @@ function App() {
             <Route path="orders" element={<PurchaseOrders />} />
             <Route path="tracking" element={<OrderTracking />} />
             <Route path="returns" element={<ManufacturerReturns />} />
+            <Route path="applications" element={<ApplicationTracking />} />
           </Route>
 
           {/* Catch-all */}
