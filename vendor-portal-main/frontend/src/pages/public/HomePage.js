@@ -13,9 +13,9 @@ const features = [
 ];
 
 const stats = [
-  { value: '2,400+', label: 'Active Vendors', icon: Package },
-  { value: '890+', label: 'Manufacturers', icon: Users },
-  { value: '$14M+', label: 'Orders Processed', icon: TrendingUp },
+  { label: 'Secure Vendor Onboarding', emoji: '🔒' },
+  { label: 'Instant Order Placement', emoji: '🏭' },
+  { label: '24/7 Platform Availability', emoji: '⏱️' },
 ];
 
 const HomePage = () => {
@@ -106,12 +106,11 @@ const HomePage = () => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {stats.map((s, i) => (
               <div key={i} className="flex items-center gap-4 justify-center">
-                <div className="w-10 h-10 rounded-lg bg-brand-50 flex items-center justify-center">
-                  <s.icon size={20} className="text-brand-600" />
+                <div className="w-10 h-10 rounded-lg bg-brand-50 flex items-center justify-center text-xl shrink-0">
+                  {s.emoji}
                 </div>
                 <div>
-                  <p className="font-display font-bold text-2xl text-brand-900">{s.value}</p>
-                  <p className="text-sm text-brand-400">{s.label}</p>
+                  <p className="font-display font-bold text-base text-brand-900 leading-tight">{s.label}</p>
                 </div>
               </div>
             ))}

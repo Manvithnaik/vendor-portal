@@ -18,7 +18,7 @@ const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1'
 
 // ── internal fetch helper ────────────────────────────────────────────────────
 const request = async (method, path, body = null) => {
-  const token = localStorage.getItem('vh_access_token');
+  const token = localStorage.getItem('token');
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -196,7 +196,7 @@ export const orderApi = {
 //  (Backend must expose POST /uploads/po — or use a cloud URL directly)
 // ============================================================
 export const uploadPO = async (file) => {
-  const token = localStorage.getItem('vh_access_token');
+  const token = localStorage.getItem('token');
   const formData = new FormData();
   formData.append('file', file);
 

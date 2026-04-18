@@ -18,7 +18,6 @@ const navItems = {
   ],
   vendor: [
     { to: '/vendor', icon: LayoutDashboard, label: 'Dashboard', end: true },
-    { to: '/vendor/profile', icon: UserCircle, label: 'Profile' },
     { to: '/vendor/products', icon: Package, label: 'Products' },
     { to: '/vendor/orders', icon: ShoppingCart, label: 'Orders & RFQs' },
     { to: '/vendor/shipping', icon: Truck, label: 'Shipping' },
@@ -26,7 +25,6 @@ const navItems = {
   ],
   manufacturer: [
     { to: '/manufacturer', icon: LayoutDashboard, label: 'Dashboard', end: true },
-    { to: '/manufacturer/profile', icon: UserCircle, label: 'Profile' },
     { to: '/manufacturer/browse', icon: Search, label: 'Browse Products' },
     { to: '/manufacturer/quotations', icon: FileSearch, label: 'Quotations' },
     { to: '/manufacturer/orders', icon: ShoppingCart, label: 'Purchase Orders' },
