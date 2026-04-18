@@ -45,6 +45,7 @@ class RFQService:
             title=data.title,
             description=data.description,
             category_id=data.category_id,
+            product_id=data.product_id,
             location_filter=data.location_filter,
             min_vendor_rating=data.min_vendor_rating,
             deadline=data.deadline,
@@ -92,6 +93,7 @@ class RFQService:
             price=data.price,
             lead_time_days=data.lead_time_days,
             compliance_notes=data.compliance_notes,
+            document_url=data.document_url,
             status=QuoteStatusEnum.submitted,
         )
         return self.quote_repo.create(quote)

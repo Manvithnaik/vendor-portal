@@ -57,6 +57,13 @@ def list_quotes(rfq_id: int, db: Session = Depends(get_db), _=Depends(get_curren
     quotes = svc.list_quotes_for_rfq(rfq_id)
     return success_response("Quotes retrieved.", [QuoteResponse.model_validate(q) for q in quotes])
 
+@router.get("/my-quotes", response_model=APIResponse)
+def list_my_quotes(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    svc = RFQService(db)
+    quotes = svc.quote_repo.get_by_manufacturer(current_user.org_id)
+    return success_response("My quotes retrieved.", [QuoteResponse.model_validate(q) for q in quotes])
+
+
 @router.post("/rfq/{rfq_id}/select-quote/{quote_id}", response_model=APIResponse)
 def select_quote(
     rfq_id: int,
