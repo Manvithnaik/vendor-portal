@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, verify_password, create_access_token
 from app.models.organization import Organization, Role
-from app.models.user import User
+from app.models.user import User, PasswordResetToken
 from app.models.vendor_portal import Admin
 from app.models.enums import OrgTypeEnum, RoleOrgTypeEnum, VerifyStatusEnum
 from app.repositories.user_repo import UserRepository, AdminRepository
@@ -18,6 +18,10 @@ from app.exceptions import (
     ConflictException, UnauthorizedException, NotFoundException,
     ValidationException, DatabaseException, BusinessRuleException,
 )
+import secrets
+from datetime import timedelta
+from app.services.email_service import send_password_reset_email
+from app.models.enums import OrgTypeEnum, RoleOrgTypeEnum, VerifyStatusEnum, ResetMethodEnum
 
 
 class AuthService:
@@ -48,8 +52,12 @@ class AuthService:
             )
 
         try:
+            from app.services.id_generator import IdGeneratorService
+            org_code = IdGeneratorService.generate_sequence_code(self.db, data.role)
+
             # 1. Create Organization
             org = Organization(
+                org_code=org_code,
                 name=data.org_name,
                 org_type=org_type,
                 email=data.email,
@@ -60,6 +68,8 @@ class AuthService:
                 country=data.country,
                 postal_code=data.postal_code,
                 website=data.website,
+                business_doc=data.business_doc,
+                business_doc_data=data.business_doc_data,
                 verification_status=VerifyStatusEnum.pending,
                 is_active=True,
             )
@@ -117,6 +127,35 @@ class AuthService:
     # Login — Portal Users
     # ------------------------------------------------------------------
     def login(self, data: LoginRequest) -> dict:
+        # First check if the user is an admin
+        admin = self.admin_repo.get_by_email(data.email)
+        if admin:
+            if not verify_password(data.password, admin.password_hash):
+                raise UnauthorizedException("Invalid email or password.")
+
+            if not admin.is_active or admin.status != "active":
+                raise UnauthorizedException("Admin account is inactive or suspended.")
+
+            admin.last_login_at = datetime.utcnow()
+            self.db.commit()
+
+            token = create_access_token(
+                subject=admin.id,
+                extra_claims={"role": admin.role, "type": "admin"},
+            )
+
+            return {
+                "access_token": token,
+                "token_type": "bearer",
+                "admin_id": admin.id,
+                "user_id": admin.id,
+                "role": "admin",
+                "name": admin.name,
+                "full_name": admin.name,
+                "email": admin.email,
+            }
+
+        # Otherwise, handle as portal user
         user = self.user_repo.get_by_email(data.email)
         if not user or not verify_password(data.password, user.password_hash):
             raise UnauthorizedException("Invalid email or password.")
@@ -132,12 +171,8 @@ class AuthService:
                 f"'{org.verification_status.value}'. Only approved accounts can log in."
             )
 
-        # Verify the frontend role matches the org_type
-        expected_role = map_org_type_to_role(org.org_type) if org else None
-        if expected_role and data.role not in (expected_role, "admin"):
-            raise UnauthorizedException(
-                f"Role mismatch: your account is registered as '{expected_role}'."
-            )
+        # Map org type to frontend role
+        role = map_org_type_to_role(org.org_type) if org else "vendor"
 
         # Update last_login
         user.last_login = datetime.utcnow()
@@ -158,7 +193,7 @@ class AuthService:
             "token_type": "bearer",
             "user_id": user.id,
             "org_id": user.org_id,
-            "role": data.role,
+            "role": role,
             "org_type": org.org_type.value if org else None,
             "full_name": f"{user.first_name} {user.last_name}",
             "email": user.email,
@@ -206,3 +241,64 @@ class AuthService:
         if not admin:
             raise NotFoundException("Admin")
         return admin
+
+    # ------------------------------------------------------------------
+    # Forgot Password Flow
+    # ------------------------------------------------------------------
+    def forgot_password(self, email: str) -> None:
+        user = self.user_repo.get_by_email(email)
+        # Always return 200 effectively by not raising an error if user not found, avoiding enumeration
+        if not user:
+            return
+
+        # Generate secure random token
+        raw_token = secrets.token_urlsafe(32)
+        # Hash the token before storing
+        hashed_token = hash_password(raw_token)
+
+        reset_entry = PasswordResetToken(
+            user_id=user.id,
+            token_hash=hashed_token,
+            reset_method=ResetMethodEnum.email_link,
+            expires_at=datetime.utcnow() + timedelta(hours=1),
+        )
+
+        try:
+            self.db.add(reset_entry)
+            self.db.commit()
+            # Send the email with the raw_token
+            send_password_reset_email(user.email, raw_token)
+        except Exception as exc:
+            self.db.rollback()
+            raise DatabaseException(details={"error": "Could not create reset token"})
+
+    def validate_reset_token(self, token: str) -> PasswordResetToken:
+        """Finds token by validating hashes. Returns token object if valid, else raises Exception."""
+        # Find all tokens that are unexpired and unused
+        now = datetime.utcnow()
+        active_tokens = self.db.query(PasswordResetToken).filter(
+            PasswordResetToken.expires_at > now,
+            PasswordResetToken.used_at == None
+        ).all()
+
+        for t in active_tokens:
+            if verify_password(token, t.token_hash):
+                return t
+
+        raise ValidationException("Invalid, expired, or already used reset token.")
+
+    def reset_password(self, token: str, new_password: str) -> None:
+        reset_entry = self.validate_reset_token(token)
+        
+        user = reset_entry.user
+        if not user:
+            raise NotFoundException("User associated with reset token not found in database.")
+            
+        user.password_hash = hash_password(new_password)
+        reset_entry.used_at = datetime.utcnow()
+        
+        try:
+            self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            raise DatabaseException(details={"error": "Could not update password"})

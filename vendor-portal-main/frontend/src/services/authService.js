@@ -1,10 +1,10 @@
 import apiClient from '../api/client';
 
 export const authService = {
-  login: async (email, password, role) => {
-    const endpoint = role === 'admin' ? '/auth/admin/login' : '/auth/login';
+  login: async (email, password) => {
+    const endpoint = '/auth/login';
     // response IS the full APIResponse: { status, message, data: { access_token, user_id, ... } }
-    const response = await apiClient.post(endpoint, { email, password, role });
+    const response = await apiClient.post(endpoint, { email, password });
 
     // Backend returns access_token (not 'token')
     if (response?.data?.access_token) {

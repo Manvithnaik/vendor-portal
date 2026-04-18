@@ -72,3 +72,14 @@ class PasswordResetToken(Base):
 
     # Relationships
     user = relationship("User", back_populates="reset_tokens")
+
+
+class PasswordResetOTP(Base):
+    __tablename__ = "password_reset_otps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    otp = Column(String(10), nullable=False)
+    is_verified = Column(Boolean, nullable=False, default=False)
+    expires_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)

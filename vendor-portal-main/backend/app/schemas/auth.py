@@ -13,7 +13,6 @@ FrontendRole = Literal["vendor", "manufacturer", "admin"]
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
-    role: FrontendRole
 
 
 class RegisterRequest(BaseModel):
@@ -42,11 +41,44 @@ class RegisterRequest(BaseModel):
     last_name: str
     user_phone: Optional[str] = None
 
+    # Document details
+    business_doc: Optional[str] = None
+    business_doc_data: Optional[str] = None
+
     @field_validator("confirm_password")
     @classmethod
     def passwords_match(cls, v, info):
         if "password" in info.data and v != info.data["password"]:
             raise ValueError("Passwords do not match")
+        return v
+
+    @field_validator("business_doc")
+    @classmethod
+    def validate_doc_extension(cls, v):
+        if v:
+            lower_v = v.lower()
+            if not (lower_v.endswith(".pdf") or lower_v.endswith(".doc") or lower_v.endswith(".docx")):
+                raise ValueError("Invalid file format. Only PDF, DOC, and DOCX formats are accepted for business documents.")
+        return v
+
+    @field_validator("business_doc_data")
+    @classmethod
+    def validate_doc_mime(cls, v):
+        if v:
+            valid_mimes = [
+                "application/pdf",
+                "application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ]
+            if v.startswith("data:"):
+                try:
+                    mime = v.split(";")[0].replace("data:", "")
+                    if mime not in valid_mimes:
+                        raise ValueError("Invalid file format. Only PDF, DOC, and DOCX formats are accepted for business documents.")
+                except Exception:
+                    raise ValueError("Invalid file format. Only PDF, DOC, and DOCX formats are accepted for business documents.")
+            else:
+                raise ValueError("Invalid file format. Only PDF, DOC, and DOCX formats are accepted for business documents.")
         return v
 
 
@@ -88,3 +120,12 @@ class PasswordChangeRequest(BaseModel):
         if "new_password" in info.data and v != info.data["new_password"]:
             raise ValueError("Passwords do not match")
         return v
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
