@@ -27,6 +27,7 @@ import VendorProducts from './pages/vendor/VendorProducts';
 import VendorOrders from './pages/vendor/VendorOrders';
 import VendorShipping from './pages/vendor/VendorShipping';
 import VendorReturns from './pages/vendor/VendorReturns';
+import VendorRatings from './pages/vendor/VendorRatings';
 
 // Manufacturer Pages
 import ManufacturerDashboard from './pages/manufacturer/ManufacturerDashboard';
@@ -36,6 +37,7 @@ import Quotations from './pages/manufacturer/Quotations';
 import PurchaseOrders from './pages/manufacturer/PurchaseOrders';
 import OrderTracking from './pages/manufacturer/OrderTracking';
 import ManufacturerReturns from './pages/manufacturer/ManufacturerReturns';
+import OrderRatings from './pages/manufacturer/OrderRatings';
 
 function App() {
   return (
@@ -78,6 +80,7 @@ function App() {
             <Route path="orders" element={<VendorOrders />} />
             <Route path="shipping" element={<VendorShipping />} />
             <Route path="returns" element={<VendorReturns />} />
+            <Route path="ratings" element={<VendorRatings />} />
           </Route>
 
           {/* ---- Manufacturer Dashboard (protected) ---- */}
@@ -96,6 +99,7 @@ function App() {
             <Route path="orders" element={<PurchaseOrders />} />
             <Route path="tracking" element={<OrderTracking />} />
             <Route path="returns" element={<ManufacturerReturns />} />
+            <Route path="ratings" element={<OrderRatings />} />
           </Route>
 
           {/* Catch-all */}
