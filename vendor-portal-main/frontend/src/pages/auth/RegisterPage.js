@@ -76,7 +76,9 @@ const RegisterPage = () => {
         state:            form.state || undefined,
         country:          form.country || undefined,
         postal_code:      form.postalCode || undefined,
-      };
+        business_doc:      form.businessDoc || undefined,
+        business_doc_data: form.businessDocData || undefined,
+      }; 
       await authService.register(data);
       navigate(`/application-status?email=${encodeURIComponent(form.email)}&role=${role}`);
     } catch (error) {

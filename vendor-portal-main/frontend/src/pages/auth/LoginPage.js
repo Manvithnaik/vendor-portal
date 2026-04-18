@@ -97,11 +97,10 @@ const LoginPage = () => {
                     key={r}
                     type="button"
                     onClick={() => setRole(r)}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all border ${
-                      role === r
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all border ${role === r
                         ? 'bg-brand-800 text-white border-brand-800'
                         : 'bg-white text-brand-600 border-brand-200 hover:bg-brand-50'
-                    }`}
+                      }`}
                   >
                     {r.charAt(0).toUpperCase() + r.slice(1)}
                   </button>
@@ -115,7 +114,7 @@ const LoginPage = () => {
           </form>
 
           <div className="mt-4 flex items-center justify-between text-sm">
-            <button className="text-brand-500 hover:text-brand-700 transition-colors">Forgot password?</button>
+            <Link to="/forgot-password" className="text-brand-500 hover:text-brand-700 transition-colors">Forgot password?</Link>
             <Link to={`/register/${role === 'admin' ? 'vendor' : role}`} className="text-accent-600 hover:text-accent-700 font-medium">Create account</Link>
           </div>
 

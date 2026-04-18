@@ -308,7 +308,7 @@ export const markRFQsAsSeen = (vendorEmail, rfqIds) => {
     const existing = data[vendorEmail] || [];
     data[vendorEmail] = [...new Set([...existing, ...rfqIds])];
     localStorage.setItem(RFQ_SEEN_KEY, JSON.stringify(data));
-  } catch {}
+  } catch { }
 };
 
 export const hasUnseenRFQs = (vendorEmail) => {

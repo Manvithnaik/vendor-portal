@@ -16,6 +16,16 @@ class BusinessVerificationCertificateResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class FinancialDetailsResponse(BaseModel):
+    bank_name: Optional[str] = None
+    account_number_encrypted: Optional[str] = None
+    routing_number_encrypted: Optional[str] = None
+    tax_id_encrypted: Optional[str] = None
+    currency: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
 class OrganizationCreate(BaseModel):
     name: str
     org_type: OrgTypeEnum
@@ -70,6 +80,8 @@ class OrganizationResponse(BaseModel):
     postal_code: Optional[str] = None
     website: Optional[str] = None
     logo_url: Optional[str] = None
+    business_doc: Optional[str] = None
+    business_doc_data: Optional[str] = None
     contact_name: Optional[str] = None
     contact_email: Optional[str] = None
     contact_phone: Optional[str] = None
@@ -81,6 +93,7 @@ class OrganizationResponse(BaseModel):
     overall_rating: Optional[float] = None
     verification_status: VerifyStatusEnum
     verification_certificates: list[BusinessVerificationCertificateResponse] = []
+    financial_details: Optional[FinancialDetailsResponse] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, verify_password, create_access_token
 from app.models.organization import Organization, Role
-from app.models.user import User
+from app.models.user import User, PasswordResetToken
 from app.models.vendor_portal import Admin
 from app.models.enums import OrgTypeEnum, RoleOrgTypeEnum, VerifyStatusEnum
 from app.repositories.user_repo import UserRepository, AdminRepository
@@ -18,6 +18,10 @@ from app.exceptions import (
     ConflictException, UnauthorizedException, NotFoundException,
     ValidationException, DatabaseException, BusinessRuleException,
 )
+import secrets
+from datetime import timedelta
+from app.services.email_service import send_password_reset_email
+from app.models.enums import OrgTypeEnum, RoleOrgTypeEnum, VerifyStatusEnum, ResetMethodEnum
 
 
 class AuthService:
@@ -60,6 +64,8 @@ class AuthService:
                 country=data.country,
                 postal_code=data.postal_code,
                 website=data.website,
+                business_doc=data.business_doc,
+                business_doc_data=data.business_doc_data,
                 verification_status=VerifyStatusEnum.pending,
                 is_active=True,
             )
@@ -206,3 +212,64 @@ class AuthService:
         if not admin:
             raise NotFoundException("Admin")
         return admin
+
+    # ------------------------------------------------------------------
+    # Forgot Password Flow
+    # ------------------------------------------------------------------
+    def forgot_password(self, email: str) -> None:
+        user = self.user_repo.get_by_email(email)
+        # Always return 200 effectively by not raising an error if user not found, avoiding enumeration
+        if not user:
+            return
+
+        # Generate secure random token
+        raw_token = secrets.token_urlsafe(32)
+        # Hash the token before storing
+        hashed_token = hash_password(raw_token)
+
+        reset_entry = PasswordResetToken(
+            user_id=user.id,
+            token_hash=hashed_token,
+            reset_method=ResetMethodEnum.email_link,
+            expires_at=datetime.utcnow() + timedelta(hours=1),
+        )
+
+        try:
+            self.db.add(reset_entry)
+            self.db.commit()
+            # Send the email with the raw_token
+            send_password_reset_email(user.email, raw_token)
+        except Exception as exc:
+            self.db.rollback()
+            raise DatabaseException(details={"error": "Could not create reset token"})
+
+    def validate_reset_token(self, token: str) -> PasswordResetToken:
+        """Finds token by validating hashes. Returns token object if valid, else raises Exception."""
+        # Find all tokens that are unexpired and unused
+        now = datetime.utcnow()
+        active_tokens = self.db.query(PasswordResetToken).filter(
+            PasswordResetToken.expires_at > now,
+            PasswordResetToken.used_at == None
+        ).all()
+
+        for t in active_tokens:
+            if verify_password(token, t.token_hash):
+                return t
+
+        raise ValidationException("Invalid, expired, or already used reset token.")
+
+    def reset_password(self, token: str, new_password: str) -> None:
+        reset_entry = self.validate_reset_token(token)
+        
+        user = reset_entry.user
+        if not user:
+            raise NotFoundException("User associated with reset token not found in database.")
+            
+        user.password_hash = hash_password(new_password)
+        reset_entry.used_at = datetime.utcnow()
+        
+        try:
+            self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            raise DatabaseException(details={"error": "Could not update password"})
