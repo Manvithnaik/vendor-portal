@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { orderService } from '../../services/orderService';
 import Toast from '../../components/common/Toast';
-import { Package, CheckCircle, Truck, MapPin, Clock } from 'lucide-react';
+import { Package, CheckCircle, Truck, MapPin, Clock, Star } from 'lucide-react';
+import RatingModal from '../../components/manufacturer/RatingModal';
+import { ratingService } from '../../services/ratingService';
 
 const trackSteps = [
   { key: 'pending', label: 'Pending', icon: Clock },
@@ -16,19 +18,25 @@ const statusOrder = { pending: 0, accepted: 1, shipped: 2, delivered: 3, rejecte
 const OrderTracking = () => {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
+  const [ratedOrderIds, setRatedOrderIds] = useState([]);
   const [toast, setToast] = useState(null);
+  const [ratingOrderId, setRatingOrderId] = useState(null);
 
   useEffect(() => {
-    const loadOrders = async () => {
+    const loadData = async () => {
       try {
-        const response = await orderService.listOrders();
-        const all = response?.data || [];
+        const [orderRes, ratingRes] = await Promise.all([
+          orderService.listOrders(),
+          ratingService.getManufacturerRatings()
+        ]);
+        const all = orderRes?.data || [];
         setOrders(all.filter(o => o.status !== 'rejected'));
+        setRatedOrderIds((ratingRes || []).map(r => r.order_id));
       } catch (err) {
-        setToast({ message: err.message || 'Failed to load orders', type: 'error' });
+        setToast({ message: err.message || 'Failed to load data', type: 'error' });
       }
     };
-    loadOrders();
+    loadData();
   }, [user.email]);
 
   return (
@@ -43,11 +51,30 @@ const OrderTracking = () => {
         <div className="space-y-4">
           {orders.map(o => {
             const currentStep = statusOrder[o.status] ?? 0;
+            const isShipped = ['shipped', 'delivered'].includes(o.status);
+            const isRated = ratedOrderIds.includes(o.id);
+
             return (
-              <div key={o.id} className="card p-6">
+              <div key={o.id} className="card p-6 border-l-4 border-l-transparent hover:border-l-accent-500 transition-all">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-5 gap-2">
-                  <div>
-                    <h3 className="font-medium text-brand-900">{o.productName}</h3>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-medium text-brand-900">{o.productName}</h3>
+                      {isShipped && (
+                        isRated ? (
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-success-600 bg-success-50 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            <CheckCircle size={10} /> Rated ✓
+                          </span>
+                        ) : (
+                          <button 
+                            onClick={() => setRatingOrderId(o.id)}
+                            className="flex items-center gap-1 text-[10px] font-bold text-accent-600 bg-accent-50 px-2 py-0.5 rounded-full uppercase tracking-wider hover:bg-accent-100 transition-colors"
+                          >
+                            <Star size={10} className="fill-accent-500" /> Rate This
+                          </button>
+                        )
+                      )}
+                    </div>
                     <p className="text-xs text-brand-400">
                       Order {o.id} • Vendor: {o.vendorName || o.vendorEmail} • Qty: {o.quantity}
                     </p>
@@ -99,6 +126,17 @@ const OrderTracking = () => {
           <p className="text-brand-400">No active orders to track.</p>
         </div>
       )}
+
+      {/* Rating Modal */}
+      <RatingModal 
+        isOpen={!!ratingOrderId} 
+        orderId={ratingOrderId}
+        onClose={() => setRatingOrderId(null)} 
+        onSuccess={() => {
+          // Refresh page to show Rated status
+          window.location.reload();
+        }}
+      />
     </div>
   );
 };

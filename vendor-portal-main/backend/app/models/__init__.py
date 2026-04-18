@@ -24,3 +24,4 @@ from app.models.vendor_portal import (  # noqa: F401
     Dispute, Refund,
     CRMInteraction, CRMTask, CRMNote,
 )
+from app.models.rating import Rating  # noqa: F401

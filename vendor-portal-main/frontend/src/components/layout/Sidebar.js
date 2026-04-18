@@ -5,8 +5,11 @@ import { useAuth } from '../../context/AuthContext';
 import {
   LayoutDashboard, Users, Package, ShoppingCart, Truck,
   UserCircle, Settings, LogOut, ChevronLeft, ChevronRight,
-  FileText, ShieldCheck, Search, Menu, X, FileSearch, RotateCcw
+  FileText, ShieldCheck, Search, Menu, X, FileSearch, RotateCcw, Star, CheckCircle
 } from 'lucide-react';
+import RatingModal from '../manufacturer/RatingModal';
+import { ratingService } from '../../services/ratingService';
+import { orderService } from '../../services/orderService';
 
 // Sidebar link items per role
 const navItems = {
@@ -23,6 +26,7 @@ const navItems = {
     { to: '/vendor/orders', icon: ShoppingCart, label: 'Orders & RFQs' },
     { to: '/vendor/shipping', icon: Truck, label: 'Shipping' },
     { to: '/vendor/returns', icon: RotateCcw, label: 'Returns & Disputes' },
+    { to: '/vendor/ratings', icon: Star, label: 'Performance Reviews' },
   ],
   manufacturer: [
     { to: '/manufacturer', icon: LayoutDashboard, label: 'Dashboard', end: true },
@@ -32,6 +36,7 @@ const navItems = {
     { to: '/manufacturer/orders', icon: ShoppingCart, label: 'Purchase Orders' },
     { to: '/manufacturer/tracking', icon: Truck, label: 'Order Tracking' },
     { to: '/manufacturer/returns', icon: RotateCcw, label: 'Returns & Disputes' },
+    { to: '/manufacturer/ratings', icon: Star, label: 'Ratings & Reviews' },
   ],
 };
 
@@ -39,14 +44,39 @@ const Sidebar = ({ role }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [hasNewRFQs, setHasNewRFQs] = useState(false);
+  const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
+  const [canRate, setCanRate] = useState(false);
+  const [isAllRated, setIsAllRated] = useState(false);
   const { logout, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const items = navItems[role] || [];
 
-  // Backend polling for unseen RFQs can be implemented here later
+  // Backend polling for unseen RFQs and rating availability
   useEffect(() => {
-    // left intentionally empty since local storage logic is removed
+    const checkRatings = async () => {
+      if (role === 'manufacturer') {
+        try {
+          const [orderRes, ratingRes] = await Promise.all([
+            orderService.listOrders(),
+            ratingService.getManufacturerRatings()
+          ]);
+          const shipped = (orderRes?.data || []).filter(o => 
+            ['shipped', 'delivered'].includes(o.status)
+          );
+          const ratedIds = (ratingRes || []).map(r => r.order_id);
+          const unratedCount = shipped.filter(o => !ratedIds.includes(o.id)).length;
+          
+          setCanRate(shipped.length > 0 && unratedCount > 0);
+          setIsAllRated(shipped.length > 0 && unratedCount === 0);
+        } catch (err) {
+          console.error('Error checking ratings:', err);
+        }
+      }
+    };
+
+    checkRatings();
+    // Re-check periodically or on location change
   }, [role, user?.email, location.pathname]);
 
   const handleLogout = () => {
@@ -90,7 +120,36 @@ const Sidebar = ({ role }) => {
             {!collapsed && <span>{item.label}</span>}
           </NavLink>
         ))}
+
+        {/* Additive Feature: Rate This */}
+        {role === 'manufacturer' && (canRate || isAllRated) && (
+          <button
+            onClick={() => canRate && setIsRatingModalOpen(true)}
+            disabled={isAllRated}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 w-full ${
+              isAllRated 
+                ? 'text-success-600 bg-success-50 cursor-default' 
+                : 'text-accent-600 hover:bg-accent-50'
+            }`}
+          >
+            <div className="relative">
+              {isAllRated ? <CheckCircle size={18} /> : <Star size={18} className="fill-accent-500" />}
+            </div>
+            {!collapsed && <span>{isAllRated ? 'Rated ✓' : 'Rate This'}</span>}
+          </button>
+        )}
       </nav>
+
+      {/* Rating Modal */}
+      <RatingModal 
+        isOpen={isRatingModalOpen} 
+        onClose={() => setIsRatingModalOpen(false)} 
+        onSuccess={() => {
+          // Trigger a re-check of ratings
+          setCanRate(false); // Temporary UI feedback
+          window.location.reload(); // Hard reload for simplicity in this case, or use a context/event emitter
+        }}
+      />
 
       {/* User & logout */}
       <div className="px-3 py-4 border-t border-surface-200 space-y-2">
