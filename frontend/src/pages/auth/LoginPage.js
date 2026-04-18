@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import Toast from '../../components/common/Toast';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import Toast from '../../components/common/Toast';
+import { useAuth } from '../../context/AuthContext';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -10,16 +10,12 @@ const LoginPage = () => {
   const [role, setRole] = useState('vendor');
   const [showPw, setShowPw] = useState(false);
   const [toast, setToast] = useState(null);
-  const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    setLoading(true);
-    const result = await login(email, password, role);
-    setLoading(false);
-
+    const result = login(email, password, role);
     if (!result.success) {
       setToast({ message: result.message, type: 'error' });
       return;
@@ -97,11 +93,10 @@ const LoginPage = () => {
                     key={r}
                     type="button"
                     onClick={() => setRole(r)}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all border ${
-                      role === r
-                        ? 'bg-brand-800 text-white border-brand-800'
-                        : 'bg-white text-brand-600 border-brand-200 hover:bg-brand-50'
-                    }`}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all border ${role === r
+                      ? 'bg-brand-800 text-white border-brand-800'
+                      : 'bg-white text-brand-600 border-brand-200 hover:bg-brand-50'
+                      }`}
                   >
                     {r.charAt(0).toUpperCase() + r.slice(1)}
                   </button>
@@ -109,14 +104,14 @@ const LoginPage = () => {
               </div>
             </div>
 
-            <button type="submit" className="btn-primary w-full py-3" disabled={loading}>
-              {loading ? 'Signing in...' : 'Sign in'}
+            <button type="submit" className="btn-primary w-full py-3">
+              Sign in
             </button>
           </form>
 
           <div className="mt-4 flex items-center justify-between text-sm">
             <button className="text-brand-500 hover:text-brand-700 transition-colors">Forgot password?</button>
-            <Link to={`/register/${role === 'admin' ? 'vendor' : role}`} className="text-accent-600 hover:text-accent-700 font-medium">Create account</Link>
+            <Link to={role === 'manufacturer' ? "/register/manufacturer" : "/register/vendor"} className="text-accent-600 hover:text-accent-700 font-medium">Create account</Link>
           </div>
 
           {/* Quick hint */}

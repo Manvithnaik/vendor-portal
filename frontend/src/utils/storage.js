@@ -18,23 +18,7 @@ const getStore = (key) => {
   try { return JSON.parse(localStorage.getItem(key)) || []; }
   catch { return []; }
 };
-const setStore = (key, data) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-    return true;
-  } catch (error) {
-    const isQuotaError = error instanceof DOMException && (
-      error.name === 'QuotaExceededError' ||
-      error.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
-      error.code === 22
-    );
-    if (isQuotaError) {
-      console.error(`localStorage quota exceeded for key "${key}"`, error);
-      return false;
-    }
-    throw error;
-  }
-};
+const setStore = (key, data) => localStorage.setItem(key, JSON.stringify(data));
 
 // ---- seed default admin on first load ----
 export const seedData = () => {
@@ -48,7 +32,44 @@ export const seedData = () => {
       name: 'Super Admin',
       createdAt: new Date().toISOString(),
     });
+    // Add mock manufacturer
+    users.push({
+      id: 'mfg-1',
+      email: 'mfg@demo.com',
+      password: 'password',
+      role: 'manufacturer',
+      name: 'Demo Manufacturer',
+      createdAt: new Date().toISOString(),
+    });
     setStore(KEYS.USERS, users);
+
+    // Add mock application
+    const apps = getStore(KEYS.APPLICATIONS);
+    apps.push({
+      id: 'app-mfg-1',
+      email: 'mfg@demo.com',
+      role: 'manufacturer',
+      status: 'approved',
+      orgName: 'Demo Manufacturer Corp',
+    });
+    setStore(KEYS.APPLICATIONS, apps);
+
+    // Add mock products for grid display (add 5 products to see grid spanning)
+    const products = getStore(KEYS.PRODUCTS);
+    for (let i = 1; i <= 5; i++) {
+      products.push({
+        id: `prod-${i}`,
+        name: `Sample Product ${i}`,
+        vendorEmail: 'vendor@demo.com',
+        vendorName: 'Demo Vendor',
+        price: 10 * i,
+        description: `This is a sample product ${i} for demonstration purposes.`,
+        category: 'Electronics',
+        stock: 100,
+        image: `https://picsum.photos/seed/${i}/200/200`
+      });
+    }
+    setStore(KEYS.PRODUCTS, products);
   }
 };
 
@@ -205,14 +226,8 @@ export const createOrder = (order) => {
     updatedAt: new Date().toISOString(),
   };
   orders.push(o);
-  const saved = setStore(KEYS.ORDERS, orders);
-  if (!saved) {
-    return {
-      success: false,
-      message: 'Unable to save order: local storage quota exceeded. Clear browser storage or delete older orders and try again.',
-    };
-  }
-  return { success: true, order: o };
+  setStore(KEYS.ORDERS, orders);
+  return o;
 };
 
 export const getOrders = (filters = {}) => {
@@ -222,13 +237,12 @@ export const getOrders = (filters = {}) => {
   return orders;
 };
 
-export const updateOrderStatus = (orderId, status, rejectionReason) => {
+export const updateOrderStatus = (orderId, status) => {
   const orders = getStore(KEYS.ORDERS);
   const idx = orders.findIndex(o => o.id === orderId);
   if (idx === -1) return false;
   orders[idx].status = status;
   orders[idx].updatedAt = new Date().toISOString();
-  if (rejectionReason) orders[idx].rejectionReason = rejectionReason;
   setStore(KEYS.ORDERS, orders);
   return true;
 };
@@ -292,30 +306,7 @@ export const getQuotations = (filters = {}) => {
   return quotations;
 };
 
-// ---- RFQ Read Tracking (Vendor) ----
-const RFQ_SEEN_KEY = 'vh_rfq_seen';
-
-export const getSeenRFQIds = (vendorEmail) => {
-  try {
-    const data = JSON.parse(localStorage.getItem(RFQ_SEEN_KEY)) || {};
-    return data[vendorEmail] || [];
-  } catch { return []; }
-};
-
-export const markRFQsAsSeen = (vendorEmail, rfqIds) => {
-  try {
-    const data = JSON.parse(localStorage.getItem(RFQ_SEEN_KEY)) || {};
-    const existing = data[vendorEmail] || [];
-    data[vendorEmail] = [...new Set([...existing, ...rfqIds])];
-    localStorage.setItem(RFQ_SEEN_KEY, JSON.stringify(data));
-  } catch {}
-};
-
-export const hasUnseenRFQs = (vendorEmail) => {
-  const allRFQs = getRFQs({ vendorEmail });
-  const seen = getSeenRFQIds(vendorEmail);
-  return allRFQs.some(r => !seen.includes(r.id));
-};
+// ---- Disputes / Return Requests ----
 // statuses: requested | acknowledged | investigating | escalated | resolved
 // resolution: accepted | rejected | replacement_initiated | resolved
 
@@ -327,25 +318,13 @@ const generateRMA = () => {
 export const createDispute = (data) => {
   const disputes = getStore(KEYS.DISPUTES);
   const now = new Date().toISOString();
-
-  // Build initial evidence from proof files if provided
-  const initialEvidence = (data.proofFiles || []).map((pf, i) => ({
-    id: `ev-${Date.now()}-${i}`,
-    uploadedBy: data.manufacturerName || data.manufacturerEmail,
-    role: 'manufacturer',
-    fileName: pf.fileName,
-    fileData: pf.fileData,
-    fileType: pf.fileType,
-    uploadedAt: now,
-  }));
-
   const dispute = {
     ...data,
     id: `disp-${Date.now()}`,
     rmaNumber: generateRMA(),
     status: 'requested',
     resolution: null,
-    evidence: initialEvidence,
+    evidence: [],          // [{ id, uploadedBy, role, fileName, fileData, fileType, uploadedAt }]
     timeline: [
       {
         id: `tl-${Date.now()}`,
@@ -355,21 +334,11 @@ export const createDispute = (data) => {
         note: data.description || '',
         timestamp: now,
       },
-      ...(initialEvidence.length > 0 ? [{
-        id: `tl-${Date.now()}-ev`,
-        action: `${initialEvidence.length} proof file(s) uploaded`,
-        actor: data.manufacturerName || data.manufacturerEmail,
-        role: 'manufacturer',
-        note: '',
-        timestamp: now,
-      }] : []),
     ],
     vendorComment: '',
     createdAt: now,
     updatedAt: now,
   };
-  // Remove proofFiles from stored dispute to avoid duplication
-  delete dispute.proofFiles;
   disputes.push(dispute);
   setStore(KEYS.DISPUTES, disputes);
   return dispute;

@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
-import { productService } from '../../services/productService';
-import { rfqService } from '../../services/rfqService';
+import { CheckCircle, Clock, FileText, Package, Search, ShoppingCart } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
-import { Search, Package, FileText, CheckCircle, Clock, ShoppingCart } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { createOrder, createRFQ, getProducts, getRFQs } from '../../utils/storage';
 
 const BrowseProducts = () => {
   const { user } = useAuth();
@@ -15,21 +14,14 @@ const BrowseProducts = () => {
   const [notes, setNotes] = useState('');
   const [myRFQs, setMyRFQs] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [detailProduct, setDetailProduct] = useState(null);
 
   // Per-product quantity map: { [productId]: number }
   const [quantities, setQuantities] = useState({});
 
-  const load = async () => {
-    try {
-      const [prodRes, rfqRes] = await Promise.all([
-        productService.listProducts(),
-        rfqService.listRFQs()
-      ]);
-      setProducts(prodRes?.data || []);
-      setMyRFQs(rfqRes?.data || []);
-    } catch (e) {
-      setToast({ message: e.message || 'Failed to load data', type: 'error' });
-    }
+  const load = () => {
+    setProducts(getProducts());
+    setMyRFQs(getRFQs({ manufacturerEmail: user.email }));
   };
 
   useEffect(() => { load(); }, []);
@@ -49,45 +41,42 @@ const BrowseProducts = () => {
   };
 
   // Check if RFQ already sent for this product
-  const hasRFQ = (productId) => myRFQs.some(r => r.product_id === productId && r.status !== 'closed');
+  const hasRFQ = (productId) => myRFQs.some(r => r.productId === productId && r.status !== 'closed');
 
   // ── RFQ submit ──────────────────────────────────────────────────────────────
-  const handleRFQ = async (e) => {
+  const handleRFQ = (e) => {
     e.preventDefault();
     setSubmitting(true);
-    // deadline = 30 days from now (ISO string)
-    const deadline = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    try {
-      await rfqService.createRFQ({
-        title:       `RFQ for ${rfqProduct.name}`,
-        description: notes.trim() || undefined,
-        deadline,
-        category_id: rfqProduct.category_id || undefined,
-        broadcast_to_org_ids: rfqProduct.manufacturer_org_id ? [rfqProduct.manufacturer_org_id] : [],
-      });
-      setToast({ message: `RFQ sent for "${rfqProduct.name}"! The vendor will be notified.`, type: 'success' });
-      setRfqProduct(null);
-      setNotes('');
-      load();
-    } catch (error) {
-      setToast({ message: error.message || 'Failed to request quote.', type: 'error' });
-    } finally {
-      setSubmitting(false);
-    }
+    createRFQ({
+      productId: rfqProduct.id,
+      productName: rfqProduct.name,
+      vendorEmail: rfqProduct.vendorEmail,
+      vendorName: rfqProduct.vendorName || rfqProduct.vendorEmail,
+      manufacturerEmail: user.email,
+      manufacturerName: user.name || user.email,
+      notes: notes.trim(),
+    });
+    setToast({ message: `RFQ sent for "${rfqProduct.name}"! The vendor will be notified.`, type: 'success' });
+    setRfqProduct(null);
+    setNotes('');
+    setSubmitting(false);
+    load();
   };
 
   // ── Direct Purchase ─────────────────────────────────────────────────────────
-  const handlePurchase = async (p) => {
+  const handlePurchase = (p) => {
     const qty = getQty(p.id);
-    try {
-      // In the new flow, orders MUST be created via Quotes. 
-      // Direct purchase might be retired or requires quotation_id. 
-      // The user specified: "Convert the frontend from a localStorage... preserving UI/UX completely, enforcing correct business workflow"
-      // Since direct purchase contradicts the mandatory flow, we'll disable it or keep it for legacy.
-      setToast({ message: 'Direct purchase is disabled. You must request a quote first.', type: 'error' });
-    } catch (error) {
-      setToast({ message: error.message || 'Failed to place order.', type: 'error' });
-    }
+    createOrder({
+      productId: p.id,
+      productName: p.name,
+      productPrice: p.price,
+      vendorEmail: p.vendorEmail,
+      vendorName: p.vendorName || p.vendorEmail,
+      manufacturerEmail: user.email,
+      manufacturerName: user.name || user.email,
+      quantity: qty,
+    });
+    setToast({ message: `Order placed for ${qty}× "${p.name}"!`, type: 'success' });
   };
 
   return (
@@ -112,7 +101,7 @@ const BrowseProducts = () => {
 
       {/* Products grid */}
       {filtered.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.map(p => {
             const alreadySent = hasRFQ(p.id);
             const qty = getQty(p.id);
@@ -120,21 +109,41 @@ const BrowseProducts = () => {
             return (
               <div key={p.id} className="card p-5 hover:shadow-elevated transition-shadow flex flex-col">
 
-                {/* Product image / icon */}
-                <div className="w-full h-36 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center mb-4 overflow-hidden">
-                  {p.image ? (
-                    <img src={p.image} alt={p.name} className="w-full h-full object-cover rounded-lg" />
-                  ) : (
-                    <Package size={32} className="text-blue-400" />
-                  )}
-                </div>
+                {/* Clickable area → opens detail modal */}
+                <button
+                  type="button"
+                  onClick={() => setDetailProduct(p)}
+                  className="text-left w-full mb-0 focus:outline-none group"
+                  aria-label={`View details for ${p.name}`}
+                >
+                  {/* Product image / icon */}
+                  <div className="w-full h-36 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center mb-4 overflow-hidden group-hover:opacity-90 transition-opacity">
+                    {p.image ? (
+                      <img src={p.image} alt={p.name} className="w-full h-full object-cover rounded-lg" />
+                    ) : (
+                      <Package size={32} className="text-blue-400" />
+                    )}
+                  </div>
 
-                {/* Info */}
-                <h3 className="font-semibold text-brand-900 mb-1">{p.name}</h3>
-                <p className="text-xs text-brand-400 mb-2">by {p.vendorName || p.vendorEmail}</p>
-                <p className="text-sm text-brand-500 mb-4 line-clamp-2 flex-1">
-                  {p.description || 'No description provided.'}
-                </p>
+                  {/* Info */}
+                  <h3 className="font-semibold text-brand-900 mb-1 group-hover:text-blue-600 transition-colors">{p.name}</h3>
+                  <p className="text-xs text-brand-400 mb-2">by {p.vendorName || p.vendorEmail}</p>
+                  <p className="text-sm text-brand-500 mb-4 line-clamp-2 flex-1">
+                    {p.description || 'No description provided.'}
+                  </p>
+                </button>
+
+                {/* Quantity input */}
+                <div className="mb-3">
+                  <label className="block text-xs font-medium text-brand-600 mb-1">Quantity</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={qty}
+                    onChange={(e) => setQty(p.id, e.target.value)}
+                    className="input-field py-2 text-sm"
+                  />
+                </div>
 
                 {/* Action buttons */}
                 <div className="space-y-2">
@@ -153,6 +162,15 @@ const BrowseProducts = () => {
                       Request for Quotation (RFQ)
                     </button>
                   )}
+
+                  {/* Purchase button */}
+                  <button
+                    onClick={() => handlePurchase(p)}
+                    className="btn-primary w-full text-xs"
+                  >
+                    <ShoppingCart size={14} />
+                    Purchase
+                  </button>
                 </div>
               </div>
             );
@@ -166,6 +184,107 @@ const BrowseProducts = () => {
           </p>
         </div>
       )}
+
+      {/* ── Product Detail Modal ──────────────────────────────────────────── */}
+      <Modal
+        open={!!detailProduct}
+        onClose={() => setDetailProduct(null)}
+        title="Product Details"
+      >
+        {detailProduct && (
+          <div className="space-y-4">
+            {/* Image */}
+            <div className="w-full h-48 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center overflow-hidden">
+              {detailProduct.image ? (
+                <img src={detailProduct.image} alt={detailProduct.name} className="w-full h-full object-cover rounded-xl" />
+              ) : (
+                <Package size={48} className="text-blue-400" />
+              )}
+            </div>
+
+            {/* Name & vendor */}
+            <div>
+              <h2 className="text-xl font-bold text-brand-900">{detailProduct.name}</h2>
+              <p className="text-sm text-brand-400 mt-0.5">by {detailProduct.vendorName || detailProduct.vendorEmail}</p>
+            </div>
+
+            {/* Price */}
+            {detailProduct.price != null && (
+              <div className="flex items-center gap-2 p-3 bg-surface-100 rounded-lg">
+                <span className="text-sm font-medium text-brand-600">Price:</span>
+                <span className="text-lg font-bold text-blue-600">
+                  ${parseFloat(detailProduct.price).toFixed(2)}
+                </span>
+              </div>
+            )}
+
+            {/* Description */}
+            <div>
+              <p className="text-sm font-medium text-brand-700 mb-1">Description</p>
+              <p className="text-sm text-brand-500 leading-relaxed">
+                {detailProduct.description || 'No description provided.'}
+              </p>
+            </div>
+
+            {/* Extra metadata */}
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {detailProduct.category && (
+                <div className="p-3 bg-surface-100 rounded-lg">
+                  <p className="text-xs text-brand-400 mb-0.5">Category</p>
+                  <p className="font-medium text-brand-800">{detailProduct.category}</p>
+                </div>
+              )}
+              {detailProduct.sku && (
+                <div className="p-3 bg-surface-100 rounded-lg">
+                  <p className="text-xs text-brand-400 mb-0.5">SKU</p>
+                  <p className="font-medium text-brand-800">{detailProduct.sku}</p>
+                </div>
+              )}
+              {detailProduct.stock != null && (
+                <div className="p-3 bg-surface-100 rounded-lg">
+                  <p className="text-xs text-brand-400 mb-0.5">Stock</p>
+                  <p className="font-medium text-brand-800">{detailProduct.stock}</p>
+                </div>
+              )}
+              {detailProduct.unit && (
+                <div className="p-3 bg-surface-100 rounded-lg">
+                  <p className="text-xs text-brand-400 mb-0.5">Unit</p>
+                  <p className="font-medium text-brand-800">{detailProduct.unit}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3 pt-2 border-t border-surface-200">
+              <button
+                type="button"
+                onClick={() => setDetailProduct(null)}
+                className="btn-secondary"
+              >
+                Close
+              </button>
+              {!hasRFQ(detailProduct.id) && (
+                <button
+                  type="button"
+                  onClick={() => { setDetailProduct(null); setRfqProduct(detailProduct); }}
+                  className="btn-accent"
+                >
+                  <FileText size={14} />
+                  Request Quotation
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => { handlePurchase(detailProduct); setDetailProduct(null); }}
+                className="btn-primary"
+              >
+                <ShoppingCart size={14} />
+                Purchase
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* RFQ Modal */}
       <Modal
