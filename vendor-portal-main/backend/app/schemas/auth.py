@@ -13,7 +13,6 @@ FrontendRole = Literal["vendor", "manufacturer", "admin"]
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
-    role: FrontendRole
 
 
 class RegisterRequest(BaseModel):

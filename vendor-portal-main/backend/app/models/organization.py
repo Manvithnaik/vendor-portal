@@ -19,6 +19,7 @@ class Organization(Base):
     __tablename__ = "organizations"
 
     id = Column(Integer, primary_key=True, index=True)
+    org_code = Column(String(50), unique=True, index=True)
     name = Column(String(255), nullable=False)
     org_type = Column(SAEnum(OrgTypeEnum, name="org_type_enum"), nullable=False)
     email = Column(String(255), nullable=False, unique=True)
