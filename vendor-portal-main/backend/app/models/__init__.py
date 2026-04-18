@@ -3,6 +3,8 @@
 
 from app.models.enums import *  # noqa: F401,F403
 
+from app.models.sequence import SequenceTracker  # noqa: F401
+
 from app.models.organization import (  # noqa: F401
     Organization, Role,
     BusinessVerificationCertificate, ManufacturerFinancialDetails,

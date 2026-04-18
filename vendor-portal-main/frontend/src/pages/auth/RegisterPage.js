@@ -35,7 +35,7 @@ const RegisterPage = () => {
     contactName: '', contactEmail: '', contactPhone: '',
     industryType: '', factoryAddress: '',
     signatoryName: '', signatoryPhone: '',
-    businessDoc: '',
+    businessDoc: '', businessDocData: '', docError: '',
     password: '', confirmPassword: '',
     // Manufacturer extras
     gstNumber: '', businessLicense: '', annualTurnover: '',
@@ -76,13 +76,17 @@ const RegisterPage = () => {
         state:            form.state || undefined,
         country:          form.country || undefined,
         postal_code:      form.postalCode || undefined,
-        business_doc:      form.businessDoc || undefined,
+        business_doc:     form.businessDoc || undefined,
         business_doc_data: form.businessDocData || undefined,
-      }; 
+      };
       await authService.register(data);
       navigate(`/application-status?email=${encodeURIComponent(form.email)}&role=${role}`);
     } catch (error) {
-      setToast({ message: error.message || 'Registration failed', type: 'error' });
+      if (error.message && error.message.includes('PDF, DOC, and DOCX')) {
+        setForm({ ...form, docError: error.message });
+      } else {
+        setToast({ message: error.message || 'Registration failed', type: 'error' });
+      }
     } finally {
       setLoading(false);
     }
@@ -180,18 +184,42 @@ const RegisterPage = () => {
                   <Upload size={18} className="text-brand-400" />
                   <input
                     type="file"
-                    accept="application/pdf,image/*"
+                    accept=".pdf,.doc,.docx"
                     className="text-sm text-brand-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-brand-100 file:text-brand-700 hover:file:bg-brand-200"
                     onChange={(e) => {
                       const file = e.target.files[0];
-                      if (!file) return;
-                      setForm({ ...form, businessDoc: file.name });
+                      if (!file) {
+                        setForm(f => ({ ...f, docError: '', businessDoc: '', businessDocData: '' }));
+                        return;
+                      }
+
+                      const validExts = ['.pdf', '.doc', '.docx'];
+                      const validMimes = [
+                        'application/pdf',
+                        'application/msword',
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                      ];
+
+                      const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+                      if (!validExts.includes(ext) || !validMimes.includes(file.type)) {
+                        setForm(f => ({ 
+                          ...f, 
+                          docError: "Invalid file format. Only PDF, DOC, and DOCX formats are accepted for business documents.",
+                          businessDoc: '',
+                          businessDocData: ''
+                        }));
+                        e.target.value = ''; // clear input
+                        return;
+                      }
+
+                      setForm({ ...form, docError: '', businessDoc: file.name });
                       const reader = new FileReader();
                       reader.onload = (ev) => setForm(f => ({ ...f, businessDocData: ev.target.result }));
                       reader.readAsDataURL(file);
                     }}
                   />
                 </div>
+                {form.docError && <p className="text-red-500 text-sm mt-1">{form.docError}</p>}
               </div>
               <Field label="Password" name="password" type="password" value={form.password} onChange={onChange} />
               <Field label="Confirm Password" name="confirmPassword" type="password" value={form.confirmPassword} onChange={onChange} />
@@ -200,7 +228,7 @@ const RegisterPage = () => {
 
           <div className="flex justify-end gap-3">
             <Link to="/" className="btn-secondary">Cancel</Link>
-            <button type="submit" className="btn-accent" disabled={loading}>
+            <button type="submit" className="btn-accent" disabled={loading || !!form.docError}>
               <CheckCircle size={16} /> {loading ? 'Submitting...' : 'Submit Application'}
             </button>
           </div>

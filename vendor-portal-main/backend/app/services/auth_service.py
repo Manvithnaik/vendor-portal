@@ -52,8 +52,12 @@ class AuthService:
             )
 
         try:
+            from app.services.id_generator import IdGeneratorService
+            org_code = IdGeneratorService.generate_sequence_code(self.db, data.role)
+
             # 1. Create Organization
             org = Organization(
+                org_code=org_code,
                 name=data.org_name,
                 org_type=org_type,
                 email=data.email,
@@ -123,6 +127,35 @@ class AuthService:
     # Login — Portal Users
     # ------------------------------------------------------------------
     def login(self, data: LoginRequest) -> dict:
+        # First check if the user is an admin
+        admin = self.admin_repo.get_by_email(data.email)
+        if admin:
+            if not verify_password(data.password, admin.password_hash):
+                raise UnauthorizedException("Invalid email or password.")
+
+            if not admin.is_active or admin.status != "active":
+                raise UnauthorizedException("Admin account is inactive or suspended.")
+
+            admin.last_login_at = datetime.utcnow()
+            self.db.commit()
+
+            token = create_access_token(
+                subject=admin.id,
+                extra_claims={"role": admin.role, "type": "admin"},
+            )
+
+            return {
+                "access_token": token,
+                "token_type": "bearer",
+                "admin_id": admin.id,
+                "user_id": admin.id,
+                "role": "admin",
+                "name": admin.name,
+                "full_name": admin.name,
+                "email": admin.email,
+            }
+
+        # Otherwise, handle as portal user
         user = self.user_repo.get_by_email(data.email)
         if not user or not verify_password(data.password, user.password_hash):
             raise UnauthorizedException("Invalid email or password.")
@@ -138,12 +171,8 @@ class AuthService:
                 f"'{org.verification_status.value}'. Only approved accounts can log in."
             )
 
-        # Verify the frontend role matches the org_type
-        expected_role = map_org_type_to_role(org.org_type) if org else None
-        if expected_role and data.role not in (expected_role, "admin"):
-            raise UnauthorizedException(
-                f"Role mismatch: your account is registered as '{expected_role}'."
-            )
+        # Map org type to frontend role
+        role = map_org_type_to_role(org.org_type) if org else "vendor"
 
         # Update last_login
         user.last_login = datetime.utcnow()
@@ -164,7 +193,7 @@ class AuthService:
             "token_type": "bearer",
             "user_id": user.id,
             "org_id": user.org_id,
-            "role": data.role,
+            "role": role,
             "org_type": org.org_type.value if org else None,
             "full_name": f"{user.first_name} {user.last_name}",
             "email": user.email,
