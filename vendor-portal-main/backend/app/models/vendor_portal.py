@@ -29,6 +29,7 @@ class Admin(Base):
     __tablename__ = "admins"
 
     id = Column(Integer, primary_key=True, index=True)
+    admin_code = Column(String(50), unique=True, index=True)
     name = Column(String(150), nullable=False)
     email = Column(String(150), nullable=False, unique=True)
     role = Column(String(50), nullable=False, default="admin")

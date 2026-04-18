@@ -86,9 +86,9 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => { initAuth(); }, [initAuth]);
 
-  const login = async (email, password, role) => {
+  const login = async (email, password) => {
     try {
-      const result = await authService.login(email, password, role);
+      const result = await authService.login(email, password);
       if (result && result.data && result.data.access_token) {
         const userData = result.data;
         saveSession(userData);   // persist role, org_id, org_type, full_name
