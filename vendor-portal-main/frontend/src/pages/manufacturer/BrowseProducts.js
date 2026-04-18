@@ -4,7 +4,7 @@ import { productService } from '../../services/productService';
 import { rfqService } from '../../services/rfqService';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
-import { Search, Package, FileText, CheckCircle, Clock, ShoppingCart } from 'lucide-react';
+import { Search, Package, FileText, CheckCircle, Clock, ShoppingCart, Eye } from 'lucide-react';
 
 const BrowseProducts = () => {
   const { user } = useAuth();
@@ -12,6 +12,7 @@ const BrowseProducts = () => {
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState(null);
   const [rfqProduct, setRfqProduct] = useState(null);
+  const [selectedProduct, setSelectedProduct] = useState(null);
   const [notes, setNotes] = useState('');
   const [myRFQs, setMyRFQs] = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -137,7 +138,11 @@ const BrowseProducts = () => {
                 </p>
 
                 {/* Action buttons */}
-                <div className="space-y-2">
+                <div className="space-y-2 mt-auto pt-4">
+                  <button onClick={() => setSelectedProduct(p)} className="flex items-center gap-2 justify-center w-full py-2.5 rounded-lg bg-surface-100 text-brand-700 text-sm font-medium border border-surface-200 hover:bg-surface-200 transition-colors">
+                    <Eye size={15} />
+                    View Details
+                  </button>
                   {/* RFQ button */}
                   {alreadySent ? (
                     <div className="flex items-center gap-2 justify-center py-2.5 rounded-lg bg-green-50 text-green-700 text-sm font-medium border border-green-200">
@@ -147,7 +152,7 @@ const BrowseProducts = () => {
                   ) : (
                     <button
                       onClick={() => setRfqProduct(p)}
-                      className="btn-accent w-full text-xs"
+                      className="btn-accent w-full text-xs py-2.5"
                     >
                       <FileText size={14} />
                       Request for Quotation (RFQ)
@@ -166,6 +171,86 @@ const BrowseProducts = () => {
           </p>
         </div>
       )}
+
+      {/* Product Details Modal */}
+      <Modal
+        open={!!selectedProduct}
+        onClose={() => setSelectedProduct(null)}
+        title="Product Details"
+        size="lg"
+      >
+        {selectedProduct && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row gap-6 items-start">
+              <div className="w-full sm:w-1/3 aspect-square rounded-xl bg-gradient-to-br from-blue-50 to-indigo-100 border border-surface-200 flex flex-col items-center justify-center flex-shrink-0 overflow-hidden">
+                {selectedProduct.image ? (
+                  <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="text-center p-4">
+                    <Package size={48} className="text-blue-300 mx-auto mb-2" />
+                    <p className="text-xs text-brand-400 font-medium">No Image Provided</p>
+                  </div>
+                )}
+              </div>
+              <div className="w-full sm:w-2/3 space-y-4">
+                <div>
+                  <h2 className="text-xl font-bold text-brand-900">{selectedProduct.name}</h2>
+                  <p className="text-brand-500 font-medium text-sm">by {selectedProduct.vendorName || selectedProduct.vendorEmail || 'Unknown Vendor'}</p>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 bg-surface-50 p-4 rounded-xl border border-surface-200">
+                  <div>
+                    <span className="block text-xs uppercase tracking-wider text-brand-400 font-medium mb-1">SKU</span>
+                    <span className="text-sm font-semibold text-brand-800">{selectedProduct.sku || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="block text-xs uppercase tracking-wider text-brand-400 font-medium mb-1">Min Order Qty</span>
+                    <span className="text-sm font-semibold text-brand-800">{selectedProduct.min_order_quantity} {selectedProduct.unit_of_measure}</span>
+                  </div>
+                  <div>
+                    <span className="block text-xs uppercase tracking-wider text-brand-400 font-medium mb-1">Lead Time</span>
+                    <span className="text-sm font-semibold text-brand-800">{selectedProduct.lead_time_days ? `${selectedProduct.lead_time_days} days` : 'Not specified'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-bold text-brand-900 border-b border-surface-200 pb-2 mb-3">Product Description</h3>
+              <p className="text-sm text-brand-600 leading-relaxed whitespace-pre-wrap">
+                {selectedProduct.description || 'No description provided by the vendor.'}
+              </p>
+            </div>
+
+            {selectedProduct.specifications && Object.keys(selectedProduct.specifications).length > 0 && (
+              <div>
+                <h3 className="text-sm font-bold text-brand-900 border-b border-surface-200 pb-2 mb-3">Specifications</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+                  {Object.entries(selectedProduct.specifications).map(([key, value]) => (
+                    <div key={key} className="flex justify-between py-1.5 border-b border-surface-100 last:border-0">
+                      <span className="text-xs font-medium text-brand-500 capitalize">{key.replace(/_/g, ' ')}</span>
+                      <span className="text-xs font-semibold text-brand-800 text-right">{String(value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-4 border-t border-surface-200 gap-3">
+              <button type="button" onClick={() => setSelectedProduct(null)} className="btn-secondary">Close</button>
+              {!hasRFQ(selectedProduct.id) && (
+                <button 
+                  type="button"
+                  onClick={() => { setRfqProduct(selectedProduct); setSelectedProduct(null); }} 
+                  className="btn-accent"
+                >
+                  <FileText size={15} /> Request Quotation
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* RFQ Modal */}
       <Modal

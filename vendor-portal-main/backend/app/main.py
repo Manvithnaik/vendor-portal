@@ -47,7 +47,7 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 try:
     _upload_dir = settings.UPLOAD_DIR
     os.makedirs(_upload_dir, exist_ok=True)
-    app.mount("/uploads/files", StaticFiles(directory=_upload_dir), name="uploads")
+    app.mount("/uploads", StaticFiles(directory=_upload_dir), name="uploads")
 except Exception:  # noqa: BLE001
     pass  # skip static mount if directory unavailable (e.g. fresh container)
 

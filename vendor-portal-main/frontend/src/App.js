@@ -8,11 +8,14 @@ import DashboardLayout from './components/layout/DashboardLayout';
 
 // Public Pages
 import HomePage from './pages/public/HomePage';
+import ProductAnalyticsDemo from './pages/public/ProductAnalyticsDemo';
 
 // Auth Pages
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
 import ApplicationStatusPage from './pages/auth/ApplicationStatusPage';
+import ForgotPasswordPage from './pages/auth/forgetpassword';
+import ResetPasswordPage from './pages/auth/resetpassword';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -44,9 +47,12 @@ function App() {
         <Routes>
           {/* ---- Public ---- */}
           <Route path="/" element={<HomePage />} />
+          <Route path="/product-analytics" element={<ProductAnalyticsDemo />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register/:role" element={<RegisterPage />} />
           <Route path="/application-status" element={<ApplicationStatusPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
 
           {/* ---- Admin Dashboard (protected) ---- */}
           <Route

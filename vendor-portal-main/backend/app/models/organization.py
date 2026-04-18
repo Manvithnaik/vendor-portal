@@ -32,6 +32,8 @@ class Organization(Base):
     postal_code = Column(String(20))
     website = Column(String(255))
     logo_url = Column(String(500))
+    business_doc = Column(String(500))
+    business_doc_data = Column(Text)
 
     # Vendor-specific fields (NULL for customer orgs)
     contact_name = Column(String(150))

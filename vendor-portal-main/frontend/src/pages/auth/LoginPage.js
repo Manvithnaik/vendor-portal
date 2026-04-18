@@ -89,13 +89,14 @@ const LoginPage = () => {
               </div>
             </div>
 
+
             <button type="submit" className="btn-primary w-full py-3" disabled={loading}>
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
 
           <div className="mt-4 flex items-center justify-between text-sm">
-            <button className="text-brand-500 hover:text-brand-700 transition-colors">Forgot password?</button>
+            <Link to="/forgot-password" className="text-brand-500 hover:text-brand-700 transition-colors">Forgot password?</Link>
             <Link to="/register/vendor" className="text-accent-600 hover:text-accent-700 font-medium">Create account</Link>
           </div>
         </div>
