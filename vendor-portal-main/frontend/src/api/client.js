@@ -33,7 +33,7 @@ apiClient.interceptors.response.use(
       // (admin tokens are rejected by get_current_user deps).
       // Don't wipe admin session for those failures — just throw.
       const session = (() => { try { return JSON.parse(localStorage.getItem('vh_session') || '{}'); } catch { return {}; } })();
-      const isAdminSession = session?.role === 'admin';
+      const isAdminSession = session?.role === 'admin' || session?.role === 'superadmin';
 
       if (!isAdminSession) {
         // Regular user token expired — clear session and redirect to login

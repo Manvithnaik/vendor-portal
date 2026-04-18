@@ -239,9 +239,12 @@ class AuthService:
         # Map org type to frontend role
         role = map_org_type_to_role(org.org_type) if org else "vendor"
 
-        # Update last_login
-        user.last_login = datetime.utcnow()
-        self.db.commit()
+        # Update last_login in background — don't block the login response
+        try:
+            user.last_login = datetime.utcnow()
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
 
         token = create_access_token(
             subject=user.id,
@@ -272,15 +275,27 @@ class AuthService:
         if not admin or not verify_password(data.password, admin.password_hash):
             raise UnauthorizedException("Invalid admin credentials.")
 
-        if not admin.is_active or admin.status != "active":
-            raise UnauthorizedException("Admin account is inactive or suspended.")
+        if not admin.is_active:
+            raise UnauthorizedException("Admin account is inactive.")
 
-        admin.last_login_at = datetime.utcnow()
-        self.db.commit()
+        # Determine if this is the first login (before updating)
+        must_change = (admin.last_login_at is None)
+
+        # Update last_login — non-blocking best-effort
+        try:
+            admin.last_login_at = datetime.utcnow()
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
 
         token = create_access_token(
             subject=admin.id,
-            extra_claims={"role": admin.role, "type": "admin"},
+            extra_claims={
+                "role": admin.role, 
+                "type": "admin",
+                "access_level": admin.access_level,
+                "status": admin.status
+            },
         )
 
         return {
@@ -288,9 +303,24 @@ class AuthService:
             "token_type": "bearer",
             "admin_id": admin.id,
             "role": admin.role,
+            "access_level": admin.access_level,
             "name": admin.name,
             "email": admin.email,
+            "must_change_password": must_change
         }
+
+    def change_admin_password(self, admin_id: int, current_password: str, new_password: str) -> None:
+        """Verifies current password and updates to new password."""
+        admin = self.admin_repo.get(admin_id)
+        if not admin:
+            raise NotFoundException("Admin")
+        
+        if not verify_password(current_password, admin.password_hash):
+            raise UnauthorizedException("Current password incorrect.")
+        
+        admin.password_hash = hash_password(new_password)
+        admin.status = "active"
+        self.admin_repo.update(admin)
 
     # ------------------------------------------------------------------
     # Get current user from token subject
@@ -411,6 +441,30 @@ class AuthService:
         try:
             user.password_hash = hash_password(data.new_password)
             user.updated_at = datetime.utcnow()
+            self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            raise DatabaseException(details={"error": str(exc)})
+
+    def set_admin_password(self, admin_id: int, new_password: str) -> None:
+        """
+        Sets the password for an admin and marks them as active.
+        Used for first-time password change.
+        """
+        admin = self.get_admin_by_id(admin_id)
+        
+        # Validation: min 8 chars, 1 uppercase, 1 number
+        if len(new_password) < 8:
+            raise ValidationException("Password must be at least 8 characters long.")
+        if not any(c.isupper() for c in new_password):
+            raise ValidationException("Password must contain at least one uppercase letter.")
+        if not any(c.isdigit() for c in new_password):
+            raise ValidationException("Password must contain at least one number.")
+
+        try:
+            admin.password_hash = hash_password(new_password)
+            admin.status = "active"
+            admin.updated_at = datetime.utcnow()
             self.db.commit()
         except Exception as exc:
             self.db.rollback()

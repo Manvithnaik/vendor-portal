@@ -18,6 +18,9 @@ import ForgotPasswordPage from './pages/auth/forgetpassword';
 import ResetPasswordPage from './pages/auth/resetpassword';
 import TrackApplication from './pages/auth/TrackApplication';
 
+import AdminSetPassword from './pages/auth/AdminSetPassword';
+import AdminInvitationSetup from './pages/auth/AdminInvitationSetup';
+
 // Admin Pages
 import AdminDashboard from './pages/admin/AdminDashboard';
 import VendorApplications from './pages/admin/VendorApplications';
@@ -59,6 +62,8 @@ function App() {
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/track-application" element={<TrackApplication />} />
+            <Route path="/admin/set-password" element={<AdminSetPassword />} />
+            <Route path="/admin/setup-password" element={<AdminInvitationSetup />} />
 
             {/* ---- Admin Dashboard (protected) ---- */}
             <Route

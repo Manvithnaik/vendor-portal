@@ -23,6 +23,11 @@ const LoginPage = () => {
       setToast({ message: result.message, type: 'error' });
       return;
     }
+    if (result.user?.must_change_password) {
+      navigate('/admin/set-password');
+      return;
+    }
+
     const userRole = result.user?.role || 'vendor';
     navigate(`/${userRole}`);
   };
