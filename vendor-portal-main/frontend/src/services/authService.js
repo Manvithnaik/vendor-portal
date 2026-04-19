@@ -26,7 +26,27 @@ export const authService = {
     return response;
   },
 
+  getApplicationStatus: async (email) => {
+    const response = await apiClient.get(`/auth/application/status?email=${encodeURIComponent(email)}`);
+    return response;
+  },
+
   logout: () => {
     localStorage.removeItem('token');
+  },
+
+  changeAdminPassword: async (current_password, new_password, confirm_new_password) => {
+    const response = await apiClient.post('/auth/admin/change-password', { current_password, new_password, confirm_new_password });
+    return response;
+  },
+
+  verifyAdminInvite: async (token) => {
+    const response = await apiClient.get(`/auth/admin/verify-invite?token=${token}`);
+    return response;
+  },
+
+  setupAdminPassword: async (token, new_password, confirm_password) => {
+    const response = await apiClient.post(`/auth/admin/setup-password?token=${token}`, { new_password, confirm_password });
+    return response;
   }
 };

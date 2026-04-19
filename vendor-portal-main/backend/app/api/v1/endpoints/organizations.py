@@ -80,11 +80,11 @@ def update_verification(
     background_tasks: BackgroundTasks,
     body: Optional[VerificationActionBody] = None,
     db: Session = Depends(get_db),
-    _=Depends(get_current_admin),
+    current_admin=Depends(get_current_admin),
 ):
     """Admin-only: approve or reject an organization's application."""
     svc = OrganizationService(db)
-    org = svc.update_verification_status(org_id, status)
+    org = svc.update_verification_status(org_id, status, current_admin.id)
     
     if body and body.action in ["approved", "rejected", "resubmit"]:
         user_type = "Vendor" if org.org_type.value == "manufacturer" else "Manufacturer"
@@ -102,5 +102,15 @@ def update_verification(
             changes=body.changes,
             deadline=body.deadline
         )
-
     return success_response(f"Verification status updated to '{status}'.", OrganizationResponse.model_validate(org))
+
+
+@router.get("/admin/reviewed", response_model=APIResponse)
+def reviewed_applications(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin)
+):
+    """Admin-only: list all reviewed (accepted/rejected) organizations."""
+    svc = OrganizationService(db)
+    results = svc.get_reviewed_organizations()
+    return success_response("Reviewed applications retrieved.", results)

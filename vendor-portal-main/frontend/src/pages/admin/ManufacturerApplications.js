@@ -3,7 +3,7 @@ import apiClient from '../../api/client';
 import StatusBadge from '../../components/common/StatusBadge';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
-import { CheckCircle, XCircle, RotateCcw, Eye } from 'lucide-react';
+import { CheckCircle, XCircle, RotateCcw, Eye, User, Calendar, Mail } from 'lucide-react';
 
 const ManufacturerApplications = () => {
   const [apps, setApps] = useState([]);
@@ -16,10 +16,17 @@ const ManufacturerApplications = () => {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await apiClient.get('/organizations/pending-applications');
-      const all = res?.data || [];
-      setApps(all.filter(o => o.org_type === 'customer'));
-    } catch {
+      const [pendingRes, reviewedRes] = await Promise.all([
+        apiClient.get('/organizations/pending-applications'),
+        apiClient.get('/organizations/admin/reviewed')
+      ]);
+
+      const pending = (pendingRes?.data || []).filter(o => o.org_type === 'customer');
+      const reviewed = (reviewedRes?.data || []).filter(o => o.org_type === 'customer');
+      
+      setApps([...pending, ...reviewed]);
+    } catch (err) {
+      setToast({ message: 'Failed to load applications.', type: 'error' });
       setApps([]);
     } finally {
       setLoading(false);
@@ -200,54 +207,89 @@ const ManufacturerApplications = () => {
     );
   };
 
-  const statusLabel = (s) => s === 'verified' ? 'approved' : s;
+  const statusLabel = (s) => (s === 'verified' || s === 'approved') ? 'approved' : s;
 
   return (
     <div className="space-y-6 animate-fade-in">
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
-      <div>
-        <h1 className="font-display font-bold text-2xl text-brand-900">Manufacturer Applications</h1>
-        <p className="text-sm text-brand-400 mt-1">Review and manage manufacturer registration requests.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="font-display font-bold text-3xl text-brand-900 tracking-tight">Manufacturer Applications</h1>
+          <p className="text-sm text-brand-400 mt-1">Review and manage registration requests from manufacturing partners.</p>
+        </div>
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="card shadow-elevated border-brand-100/50 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-surface-100 text-brand-600">
-                <th className="text-left px-5 py-3 font-medium">Organization</th>
-                <th className="text-left px-5 py-3 font-medium">Email</th>
-                <th className="text-left px-5 py-3 font-medium">City</th>
-                <th className="text-left px-5 py-3 font-medium">Status</th>
-                <th className="text-left px-5 py-3 font-medium">Date</th>
-                <th className="text-right px-5 py-3 font-medium">Actions</th>
+              <tr className="bg-surface-50 text-brand-600 border-b border-surface-200">
+                <th className="text-left px-6 py-4 font-semibold">Organization</th>
+                <th className="text-left px-6 py-4 font-semibold">Location</th>
+                <th className="text-left px-6 py-4 font-semibold">Status</th>
+                <th className="text-left px-6 py-4 font-semibold">Date</th>
+                <th className="text-left px-6 py-4 font-semibold">Reviewed By</th>
+                <th className="text-right px-6 py-4 font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-200">
-              {loading && <tr><td colSpan={6} className="px-5 py-10 text-center text-brand-400">Loading...</td></tr>}
-              {!loading && apps.map(app => (
-                <tr key={app.id} className="hover:bg-surface-50 transition-colors">
-                  <td className="px-5 py-3 font-medium text-brand-800">{app.name}</td>
-                  <td className="px-5 py-3 text-brand-500">{app.email}</td>
-                  <td className="px-5 py-3 text-brand-500">{app.city || '—'}</td>
-                  <td className="px-5 py-3"><StatusBadge status={statusLabel(app.verification_status)} /></td>
-                  <td className="px-5 py-3 text-brand-400">{app.created_at ? new Date(app.created_at).toLocaleDateString() : '—'}</td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button onClick={() => setViewApp(app)} className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-400 hover:text-brand-700" title="View"><Eye size={15} /></button>
-                      {app.verification_status !== 'verified' && (
-                        <button onClick={() => handleActionClick(app, 'approved')} className="p-1.5 rounded-lg hover:bg-green-50 text-green-600" title="Approve"><CheckCircle size={15} /></button>
+              {loading ? (
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-brand-300">Loading applications...</td></tr>
+              ) : apps.length === 0 ? (
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-brand-400">No manufacturer applications found.</td></tr>
+              ) : (
+                apps.map(app => (
+                  <tr key={app.id} className="hover:bg-surface-50/50 transition-colors group">
+                    <td className="px-6 py-4">
+                      <div>
+                        <p className="font-semibold text-brand-900">{app.name}</p>
+                        <p className="text-xs text-brand-400 flex items-center gap-1"><Mail size={12} />{app.email}</p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-brand-500">{app.city || '—'}, {app.country || '—'}</td>
+                    <td className="px-6 py-4">
+                      <StatusBadge status={statusLabel(app.verification_status)} />
+                    </td>
+                    <td className="px-6 py-4 text-brand-400">
+                      <div className="flex items-center gap-1.5">
+                        <Calendar size={14} />
+                        {app.created_at ? new Date(app.created_at).toLocaleDateString() : '—'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {app.reviewed_by_admin_name ? (
+                        <div className="flex items-center gap-2 text-brand-600 font-medium">
+                          <div className="w-7 h-7 rounded-full bg-brand-50 flex items-center justify-center text-brand-600">
+                            <User size={14} />
+                          </div>
+                          <span>{app.reviewed_by_admin_name}</span>
+                        </div>
+                      ) : (
+                        <span className="text-brand-300 italic text-xs">Unreviewed</span>
                       )}
-                      {app.verification_status !== 'rejected' && (
-                        <button onClick={() => handleActionClick(app, 'rejected')} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500" title="Reject"><XCircle size={15} /></button>
-                      )}
-                      <button onClick={() => handleActionClick(app, 'resubmit')} className="p-1.5 rounded-lg hover:bg-orange-50 text-orange-500" title="Request Resubmit"><RotateCcw size={15} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {!loading && apps.length === 0 && (
-                <tr><td colSpan={6} className="px-5 py-10 text-center text-brand-400">No manufacturer applications yet.</td></tr>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button onClick={() => setViewApp(app)} className="p-2 rounded-lg hover:bg-brand-50 text-brand-400 hover:text-brand-700" title="View Details">
+                          <Eye size={18} />
+                        </button>
+                        {app.verification_status !== 'verified' && (
+                          <button onClick={() => handleActionClick(app, 'approved')} className="p-2 rounded-lg hover:bg-green-50 text-green-600" title="Approve">
+                            <CheckCircle size={18} />
+                          </button>
+                        )}
+                        {app.verification_status !== 'rejected' && (
+                          <button onClick={() => handleActionClick(app, 'rejected')} className="p-2 rounded-lg hover:bg-red-50 text-red-500" title="Reject">
+                            <XCircle size={18} />
+                          </button>
+                        )}
+                        <button onClick={() => handleActionClick(app, 'resubmit')} className="p-2 rounded-lg hover:bg-orange-50 text-orange-500" title="Request Resubmit">
+                          <RotateCcw size={18} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -256,86 +298,53 @@ const ManufacturerApplications = () => {
 
       <Modal open={!!viewApp} onClose={() => setViewApp(null)} title="Manufacturer Application Details" size="xl">
         {viewApp && (
-          <div className="space-y-5 text-sm">
-            <div className="flex items-center justify-between bg-surface-50 rounded-xl px-5 py-3">
-              <div><p className="text-xs text-brand-400 font-medium">ID</p><p className="font-mono text-brand-700">{viewApp.id}</p></div>
-              <div className="text-right"><p className="text-xs text-brand-400 font-medium">Status</p><StatusBadge status={statusLabel(viewApp.verification_status)} /></div>
+          <div className="p-2 space-y-6">
+            <div className="flex items-center justify-between bg-surface-50 rounded-2xl p-6 border border-surface-200">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-brand-800 flex items-center justify-center text-white shadow-lg">
+                  <User size={28} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-brand-900">{viewApp.name}</h3>
+                  <p className="text-brand-400">{viewApp.email}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-brand-300 font-bold uppercase tracking-widest mb-1.5">Current Status</p>
+                <StatusBadge status={statusLabel(viewApp.verification_status)} />
+              </div>
             </div>
-            {renderInfoFields(viewApp)}
-            {renderDocuments(viewApp)}
-          </div>
-        )}
-      </Modal>
 
-      <Modal open={!!confirmAction} onClose={() => setConfirmAction(null)} title={
-        confirmAction?.status === 'approved' ? 'Confirm Approval' :
-          confirmAction?.status === 'rejected' ? 'Confirm Rejection' : 'Request Resubmission'
-      } size="md">
-        {confirmAction && (
-          <div className="space-y-5">
-            {confirmAction.status === 'approved' && (
-              <p className="text-brand-700">
-                Are you sure you want to approve {confirmAction.app.name}?
-                An approval email will be sent to {confirmAction.app.email} automatically.
-              </p>
-            )}
-            {confirmAction.status === 'rejected' && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-brand-700">Enter reason for rejection *</label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-2 border border-surface-200 rounded-lg text-sm"
-                  value={actionPayload.reason}
-                  onChange={e => setActionPayload({ ...actionPayload, reason: e.target.value })}
-                  placeholder="e.g. Invalid documents provided"
-                />
-              </div>
-            )}
-            {confirmAction.status === 'resubmit' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-brand-700">Enter the specific changes required *</label>
-                  <textarea
-                    className="w-full px-4 py-2 border border-surface-200 rounded-lg text-sm"
-                    rows={4}
-                    value={actionPayload.changes}
-                    onChange={e => setActionPayload({ ...actionPayload, changes: e.target.value })}
-                    placeholder="Enter each change on a new line"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-brand-700">Set resubmission deadline (optional)</label>
-                  <input
-                    type="date"
-                    className="w-full px-4 py-2 border border-surface-200 rounded-lg text-sm"
-                    value={actionPayload.deadline}
-                    onChange={e => setActionPayload({ ...actionPayload, deadline: e.target.value })}
-                  />
+                <h4 className="font-bold text-brand-800 border-b border-surface-100 pb-2">Organization Details</h4>
+                {renderInfoFields(viewApp)}
+              </div>
+              
+              <div className="space-y-4">
+                <h4 className="font-bold text-brand-800 border-b border-surface-100 pb-2">Review Information</h4>
+                <div className="bg-brand-50/50 rounded-xl p-4 space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-brand-500">Reviewed By</span>
+                    <span className="text-brand-900 font-bold">{viewApp.reviewed_by_admin_name || 'Not Reviewed'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-brand-500">Review Date</span>
+                    <span className="text-brand-900 font-medium">
+                      {viewApp.reviewed_at ? new Date(viewApp.reviewed_at).toLocaleString() : '—'}
+                    </span>
+                  </div>
                 </div>
               </div>
-            )}
+            </div>
 
-            <div className="flex justify-end gap-3 pt-4">
-              <button
-                onClick={() => setConfirmAction(null)}
-                className="px-4 py-2 text-sm font-medium text-brand-600 bg-surface-100 rounded-lg hover:bg-surface-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmAction}
-                disabled={
-                  (confirmAction.status === 'rejected' && !actionPayload.reason.trim()) ||
-                  (confirmAction.status === 'resubmit' && !actionPayload.changes.trim())
-                }
-                className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ${confirmAction.status === 'approved' ? 'bg-green-600 hover:bg-green-700' :
-                  confirmAction.status === 'rejected' ? 'bg-red-600 hover:bg-red-700' :
-                    'bg-orange-600 hover:bg-orange-700'
-                  }`}
-              >
-                {confirmAction.status === 'approved' ? 'Confirm Approve' :
-                  confirmAction.status === 'rejected' ? 'Confirm Reject' : 'Send Resubmit Request'}
-              </button>
+            {renderDocuments(viewApp)}
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-surface-100">
+              <button onClick={() => setViewApp(null)} className="btn-secondary px-6">Close</button>
+              {viewApp.verification_status !== 'verified' && (
+                <button onClick={() => { handleActionClick(viewApp, 'approved'); setViewApp(null); }} className="btn-primary px-8">Approve Manufacturer</button>
+              )}
             </div>
           </div>
         )}

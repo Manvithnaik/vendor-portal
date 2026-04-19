@@ -121,7 +121,6 @@ class PasswordChangeRequest(BaseModel):
             raise ValueError("Passwords do not match")
         return v
 
-
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
@@ -129,3 +128,33 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
+
+
+class AdminSetPasswordRequest(BaseModel):
+    new_password: str
+    confirm_password: str
+
+    @field_validator("confirm_password")
+    @classmethod
+    def passwords_match(cls, v, info):
+        if "new_password" in info.data and v != info.data["new_password"]:
+            raise ValueError("Passwords do not match")
+        return v
+
+
+class AdminCreateRequest(BaseModel):
+    name: str
+    email: EmailStr
+
+
+class AdminChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_new_password: str
+
+    @field_validator("confirm_new_password")
+    @classmethod
+    def passwords_match(cls, v, info):
+        if "new_password" in info.data and v != info.data["new_password"]:
+            raise ValueError("Passwords do not match")
+        return v

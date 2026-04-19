@@ -82,3 +82,41 @@ async def upload_po_document(
         message="File uploaded successfully.",
         data={"file_url": file_url, "file_name": safe_name}
     )
+
+@router.post("/image", response_model=APIResponse)
+async def upload_image(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Upload an image (e.g. for dispute evidence).
+    Accepts JPEG/PNG, max 10 MB.
+    Returns: { file_url: "https://..." }
+    """
+    if file.content_type not in ("image/jpeg", "image/png", "image/webp"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only JPEG, PNG, or WEBP images are accepted."
+        )
+
+    file_bytes = await file.read()
+    max_bytes = 10 * 1024 * 1024
+    if len(file_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File exceeds 10 MB limit."
+        )
+
+    safe_name = os.path.basename(file.filename or "image.jpg")
+
+    if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_KEY:
+        file_url = _upload_to_supabase(file_bytes, safe_name, file.content_type)
+    else:
+        file_url = _upload_to_local(file_bytes, safe_name)
+
+    return APIResponse(
+        status="success",
+        message="Image uploaded successfully.",
+        data={"file_url": file_url, "file_name": safe_name}
+    )
+
