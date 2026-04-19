@@ -48,8 +48,44 @@ export const seedData = () => {
       name: 'Super Admin',
       createdAt: new Date().toISOString(),
     });
+    // Add mock manufacturer
+    users.push({
+      id: 'mfg-1',
+      email: 'mfg@demo.com',
+      password: 'password',
+      role: 'manufacturer',
+      name: 'Demo Manufacturer',
+      createdAt: new Date().toISOString(),
+    });
     setStore(KEYS.USERS, users);
-  }
+
+    // Add mock application
+    const apps = getStore(KEYS.APPLICATIONS);
+    apps.push({
+      id: 'app-mfg-1',
+      email: 'mfg@demo.com',
+      role: 'manufacturer',
+      status: 'approved',
+      orgName: 'Demo Manufacturer Corp',
+    });
+    setStore(KEYS.APPLICATIONS, apps);
+
+    // Add mock products for grid display (add 5 products to see grid spanning)
+    const products = getStore(KEYS.PRODUCTS);
+    for (let i = 1; i <= 5; i++) {
+      products.push({
+        id: `prod-${i}`,
+        name: `Sample Product ${i}`,
+        vendorEmail: 'vendor@demo.com',
+        vendorName: 'Demo Vendor',
+        price: 10 * i,
+        description: `This is a sample product ${i} for demonstration purposes.`,
+        category: 'Electronics',
+        stock: 100,
+        image: `https://picsum.photos/seed/${i}/200/200`
+      });
+    }
+    setStore(KEYS.PRODUCTS, products);  }
 };
 
 // ---- Auth ----

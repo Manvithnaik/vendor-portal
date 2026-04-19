@@ -24,6 +24,7 @@ const navItems = {
     { to: '/vendor/orders', icon: ShoppingCart, label: 'Orders & RFQs' },
     { to: '/vendor/shipping', icon: Truck, label: 'Shipping' },
     { to: '/vendor/returns', icon: RotateCcw, label: 'Returns & Disputes' },
+    { to: '/vendor/applications', icon: FileText, label: 'Applications' },
   ],
   manufacturer: [
     { to: '/manufacturer', icon: LayoutDashboard, label: 'Dashboard', end: true },
@@ -32,6 +33,7 @@ const navItems = {
     { to: '/manufacturer/orders', icon: ShoppingCart, label: 'Purchase Orders' },
     { to: '/manufacturer/tracking', icon: Truck, label: 'Order Tracking' },
     { to: '/manufacturer/returns', icon: RotateCcw, label: 'Returns & Disputes' },
+    { to: '/manufacturer/applications', icon: FileText, label: 'Applications' },
   ],
 };
 
