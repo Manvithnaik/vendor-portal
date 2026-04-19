@@ -4,10 +4,12 @@ import { X } from 'lucide-react';
 
 const sizeStyles = {
   sm: '28rem',
-  md: '36rem',
-  lg: '48rem',
-  xl: '90vw',
-  full: '95vw',
+  md: '42rem',
+  lg: '64rem',
+  xl: '80rem',
+  '2xl': '90vw',
+  '3xl': '95vw',
+  full: '100vw',
 };
 
 const Modal = ({ open, onClose, title, children, size = 'md' }) => {

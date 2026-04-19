@@ -58,6 +58,7 @@ class Order(Base):
     creator = relationship("User", foreign_keys=[created_by])
     approver = relationship("User", foreign_keys=[approved_by])
     grn_confirmer = relationship("User", foreign_keys=[grn_confirmed_by])
+    quotation = relationship("Quote", foreign_keys=[quotation_id])
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     status_history = relationship(
         "OrderStatusHistory", back_populates="order", cascade="all, delete-orphan"

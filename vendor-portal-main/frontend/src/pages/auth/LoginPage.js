@@ -7,7 +7,6 @@ import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('vendor');
   const [showPw, setShowPw] = useState(false);
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -17,14 +16,20 @@ const LoginPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    const result = await login(email, password, role);
+    const result = await login(email, password);
     setLoading(false);
 
     if (!result.success) {
       setToast({ message: result.message, type: 'error' });
       return;
     }
-    navigate(`/${role}`);
+    if (result.user?.must_change_password) {
+      navigate('/admin/set-password');
+      return;
+    }
+
+    const userRole = result.user?.role || 'vendor';
+    navigate(`/${userRole}`);
   };
 
   return (
@@ -89,42 +94,28 @@ const LoginPage = () => {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-brand-700 mb-1.5">Role</label>
-              <div className="grid grid-cols-3 gap-2">
-                {['admin', 'vendor', 'manufacturer'].map(r => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setRole(r)}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all border ${
-                      role === r
-                        ? 'bg-brand-800 text-white border-brand-800'
-                        : 'bg-white text-brand-600 border-brand-200 hover:bg-brand-50'
-                    }`}
-                  >
-                    {r.charAt(0).toUpperCase() + r.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
 
             <button type="submit" className="btn-primary w-full py-3" disabled={loading}>
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
 
-          <div className="mt-4 flex items-center justify-between text-sm">
-            <button className="text-brand-500 hover:text-brand-700 transition-colors">Forgot password?</button>
-            <Link to={`/register/${role === 'admin' ? 'vendor' : role}`} className="text-accent-600 hover:text-accent-700 font-medium">Create account</Link>
+          <div className="mt-4 flex flex-col gap-3 text-sm">
+            <div className="flex items-center justify-between">
+              <Link to="/forgot-password" size="sm" variant="link" className="text-brand-500 hover:text-brand-700 transition-colors">
+                Forgot password?
+              </Link>
+              <Link to="/register/vendor" className="text-accent-600 hover:text-accent-700 font-medium">
+                Create account
+              </Link>
+            </div>
+            <div className="text-center pt-2 border-t border-surface-200">
+              <Link to="/track-application" className="text-brand-500 hover:text-brand-700 transition-colors">
+                Check Application Status
+              </Link>
+            </div>
           </div>
 
-          {/* Quick hint */}
-          <div className="mt-6 p-3 bg-surface-100 rounded-lg">
-            <p className="text-xs text-brand-400">
-              <strong>Demo admin:</strong> admin@vendorhub.com / admin123 (role: Admin)
-            </p>
-          </div>
         </div>
       </div>
     </div>

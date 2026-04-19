@@ -19,6 +19,7 @@ class Organization(Base):
     __tablename__ = "organizations"
 
     id = Column(Integer, primary_key=True, index=True)
+    org_code = Column(String(50), unique=True, index=True)
     name = Column(String(255), nullable=False)
     org_type = Column(SAEnum(OrgTypeEnum, name="org_type_enum"), nullable=False)
     email = Column(String(255), nullable=False, unique=True)
@@ -31,6 +32,8 @@ class Organization(Base):
     postal_code = Column(String(20))
     website = Column(String(255))
     logo_url = Column(String(500))
+    business_doc = Column(String(500))
+    business_doc_data = Column(Text)
 
     # Vendor-specific fields (NULL for customer orgs)
     contact_name = Column(String(150))
