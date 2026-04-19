@@ -4,12 +4,15 @@ import { orderService } from '../../services/orderService';
 import StatusBadge from '../../components/common/StatusBadge';
 import Toast from '../../components/common/Toast';
 import Modal from '../../components/common/Modal';
-import { Eye, FileText, ExternalLink } from 'lucide-react';
+import RatingModal from '../../components/common/RatingModal';
+import { Eye, FileText, ExternalLink, Star } from 'lucide-react';
 
 const PurchaseOrders = () => {
   const { user } = useAuth();
   const [orders, setOrders]     = useState([]);
   const [viewOrder, setViewOrder] = useState(null);
+  const [ratingOrder, setRatingOrder] = useState(null);
+  const [ratedOrders, setRatedOrders] = useState(new Set());
   const [toast, setToast]       = useState(null);
 
   useEffect(() => {
@@ -59,9 +62,20 @@ const PurchaseOrders = () => {
                     {o.created_at ? new Date(o.created_at).toLocaleDateString() : '—'}
                   </td>
                   <td className="px-5 py-3 text-right">
-                    <button onClick={() => setViewOrder(o)} className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-400 hover:text-brand-700" title="View Details">
-                      <Eye size={15} />
-                    </button>
+                    <div className="flex items-center justify-end gap-1">
+                      {o.status === 'shipped' && !ratedOrders.has(o.id) && (
+                        <button 
+                          onClick={() => setRatingOrder(o)} 
+                          className="p-1.5 rounded-lg hover:bg-orange-50 text-orange-400 hover:text-orange-600" 
+                          title="Rate Order"
+                        >
+                          <Star size={15} />
+                        </button>
+                      )}
+                      <button onClick={() => setViewOrder(o)} className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-400 hover:text-brand-700" title="View Details">
+                        <Eye size={15} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -136,6 +150,17 @@ const PurchaseOrders = () => {
           </div>
         )}
       </Modal>
+
+      {/* Rating Modal */}
+      <RatingModal 
+        open={!!ratingOrder} 
+        onClose={() => setRatingOrder(null)} 
+        order={ratingOrder}
+        onRatingSuccess={(orderId) => {
+          setRatedOrders(prev => new Set([...prev, orderId]));
+          setToast({ message: 'Rating submitted successfully!', type: 'success' });
+        }}
+      />
     </div>
   );
 };

@@ -11,12 +11,19 @@ from app.schemas.vendor_portal import (
     DisputeCreate, DisputeUpdate, DisputeResponse,
     RefundCreate, RefundResponse
 )
+from app.schemas.organization import OrganizationResponse
 from app.schemas.common import APIResponse, success_response
 from app.services.rfq_service import RFQService
 from app.services.dispute_service import DisputeService
 
 
 router = APIRouter(prefix="/vendor", tags=["Vendor Portal"])
+
+@router.get("/application-status", response_model=APIResponse)
+def get_application_status(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """Fetch the organization details for the current user to track application status."""
+    org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
+    return success_response("Application status retrieved.", OrganizationResponse.model_validate(org))
 
 # --- RFQ Routes ---
 @router.post("/rfq", response_model=APIResponse)

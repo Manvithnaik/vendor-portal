@@ -51,6 +51,12 @@ class AuthService:
                 f"An organization with email '{data.email}' already exists."
             )
 
+        # Conflict: email already registered as a user
+        if self.user_repo.get_by_email(data.email):
+            raise ConflictException(
+                f"A user with email '{data.email}' already exists."
+            )
+
         try:
             from app.services.id_generator import IdGeneratorService
             org_code = IdGeneratorService.generate_sequence_code(self.db, data.role)
