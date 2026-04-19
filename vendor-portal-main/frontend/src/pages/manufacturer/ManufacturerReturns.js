@@ -4,19 +4,11 @@ import apiClient from '../../api/client';
 import Toast from '../../components/common/Toast';
 import { RotateCcw, Plus, Eye, X, Package, Truck, CheckCircle2, Clock, AlertCircle, XCircle, Inbox, ArrowLeft, Loader2 } from 'lucide-react';
 import Modal from '../../components/common/Modal';
+import { toAbsUrl } from '../../utils/url';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
 
-const toAbsUrl = (path) => {
-  if (!path) return null;
-  if (path.startsWith('http')) return path;
-  try {
-    const url = new URL(API_BASE);
-    return `${url.origin}${path.startsWith('/') ? '' : '/'}${path}`;
-  } catch (e) {
-    return path;
-  }
-};
+// toAbsUrl removed and imported from utils
 
 const statusColor = {
   'Dispute Raised': 'bg-red-100 text-red-700',

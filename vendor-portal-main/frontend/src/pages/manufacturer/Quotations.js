@@ -10,6 +10,7 @@ import {
   Search, FileText, Eye, ChevronDown, ChevronUp,
   Package, Clock, CheckCircle, Inbox, ShoppingCart, AlertCircle, Upload
 } from 'lucide-react';
+import { toAbsUrl } from '../../utils/url';
 
 // ── Status badge — backend RfqStatusEnum: draft|active|extended|closed|cancelled
 const RFQStatusBadge = ({ status }) => {
@@ -498,12 +499,7 @@ const Quotations = () => {
               <div className="mt-4 p-4 border border-surface-200 rounded-lg bg-surface-50">
                 <p className="text-sm font-semibold text-brand-800 mb-2">Quotation Document</p>
                 <a
-                  href={(() => {
-                    const url = viewQuoteData.quote.document_url;
-                    if (url.startsWith('http')) return url;
-                    const baseUrl = (process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api/v1').replace(/\/api\/v1\/?$/, '');
-                    return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
-                  })()}
+                  href={toAbsUrl(viewQuoteData.quote.document_url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-brand-300 rounded-md text-sm font-medium text-brand-700 hover:text-brand-900 hover:border-brand-400 transition-colors shadow-sm"

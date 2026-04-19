@@ -8,8 +8,11 @@ const SESSION_KEY = 'vh_session'; // { role, org_id, org_type, full_name, email 
 
 const saveSession = (data) => {
   try {
-    // Normalize 'superadmin' → 'admin' for route guards; access_level=2 identifies superadmins
     const role = data.role === 'superadmin' ? 'admin' : data.role;
+    const access_level = data.access_level !== undefined 
+      ? data.access_level 
+      : (data.role === 'superadmin' ? 2 : (data.role === 'admin' ? 1 : 0));
+
     localStorage.setItem(SESSION_KEY, JSON.stringify({
       role,
       org_id:       data.org_id,
@@ -17,7 +20,7 @@ const saveSession = (data) => {
       full_name:    data.full_name || data.name,
       email:        data.email,
       user_id:      data.user_id || data.id || data.admin_id,
-      access_level: data.access_level || 0,
+      access_level,
     }));
   } catch (_) { /* storage unavailable */ }
 };
@@ -95,8 +98,15 @@ export const AuthProvider = ({ children }) => {
       if (result && result.data && result.data.access_token) {
         const userData = result.data;
         saveSession(userData);   // persist role, org_id, org_type, full_name
-        setUser(userData);
-        return { success: true, user: userData };
+        
+        // Normalize role and ensure access_level in state to match localStorage persistence
+        const sessionUser = {
+          ...userData,
+          role: userData.role === 'superadmin' ? 'admin' : userData.role,
+          access_level: userData.access_level ?? (userData.role === 'superadmin' ? 2 : (userData.role === 'admin' ? 1 : 0))
+        };
+        setUser(sessionUser);
+        return { success: true, user: sessionUser };
       }
       return { success: false, message: result?.message || 'Login failed' };
     } catch (error) {
