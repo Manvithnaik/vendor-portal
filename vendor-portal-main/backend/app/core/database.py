@@ -4,14 +4,16 @@ from app.core.config import settings
 
 
 # ---------------------------------------------------------------------------
-# Engine
+# Engine — persistent pool so connections are reused across requests
 # ---------------------------------------------------------------------------
 engine = create_engine(
     settings.SQLALCHEMY_DATABASE_URI,
-    pool_pre_ping=True,          # reconnect broken connections
-    pool_size=10,
-    max_overflow=20,
-    echo=False,                  # set True only for SQL debug logging
+    pool_size=5,
+    max_overflow=5,
+    pool_timeout=10,
+    pool_recycle=300,       # recycle before Supabase 5-min idle kill
+    pool_pre_ping=False,    # skip extra round-trip; pooler keeps conns alive
+    echo=False,
 )
 
 # ---------------------------------------------------------------------------

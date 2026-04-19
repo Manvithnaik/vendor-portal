@@ -23,6 +23,11 @@ const LoginPage = () => {
       setToast({ message: result.message, type: 'error' });
       return;
     }
+    if (result.user?.must_change_password) {
+      navigate('/admin/set-password');
+      return;
+    }
+
     const userRole = result.user?.role || 'vendor';
     navigate(`/${userRole}`);
   };
@@ -95,13 +100,22 @@ const LoginPage = () => {
             </button>
           </form>
 
-          <div className="mt-4 flex items-center justify-between text-sm">
-            <Link to="/forgot-password" className="text-brand-500 hover:text-brand-700 transition-colors">Forgot password?</Link>
-            <div className="flex gap-3">
-              <Link to="/register/vendor" className="text-accent-600 hover:text-accent-700 font-medium">Vendor Signup</Link>
-              <Link to="/register/manufacturer" className="text-accent-600 hover:text-accent-700 font-medium">Mfg Signup</Link>
+          <div className="mt-4 flex flex-col gap-3 text-sm">
+            <div className="flex items-center justify-between">
+              <Link to="/forgot-password" size="sm" variant="link" className="text-brand-500 hover:text-brand-700 transition-colors">
+                Forgot password?
+              </Link>
+              <Link to="/register/vendor" className="text-accent-600 hover:text-accent-700 font-medium">
+                Create account
+              </Link>
+            </div>
+            <div className="text-center pt-2 border-t border-surface-200">
+              <Link to="/track-application" className="text-brand-500 hover:text-brand-700 transition-colors">
+                Check Application Status
+              </Link>
             </div>
           </div>
+
         </div>
       </div>
     </div>

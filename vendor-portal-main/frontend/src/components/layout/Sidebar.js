@@ -45,7 +45,11 @@ const Sidebar = ({ role }) => {
   const { logout, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const items = navItems[role] || [];
+  // Filter items based on access_level for admins
+  let items = navItems[role] || [];
+  if (role === 'admin' && user?.access_level < 2) {
+    items = items.filter(item => item.to !== '/admin/manage-admins');
+  }
   const visibleItems = items.filter(item => item.label !== 'Profile');
 
   // Backend polling for unseen RFQs can be implemented here later
