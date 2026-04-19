@@ -83,7 +83,7 @@ const BrowseProducts = () => {
 
   // ── Direct Purchase ─────────────────────────────────────────────────────────
   const handlePurchase = async (p) => {
-    const qty = getQty(p.id);
+    let qty = quantities[p.id] || p.min_order_quantity || 1;
     try {
       // In the new flow, orders MUST be created via Quotes. 
       // Direct purchase might be retired or requires quotation_id. 

@@ -97,7 +97,10 @@ const LoginPage = () => {
 
           <div className="mt-4 flex items-center justify-between text-sm">
             <Link to="/forgot-password" className="text-brand-500 hover:text-brand-700 transition-colors">Forgot password?</Link>
-            <Link to="/register/vendor" className="text-accent-600 hover:text-accent-700 font-medium">Create account</Link>
+            <div className="flex gap-3">
+              <Link to="/register/vendor" className="text-accent-600 hover:text-accent-700 font-medium">Vendor Signup</Link>
+              <Link to="/register/manufacturer" className="text-accent-600 hover:text-accent-700 font-medium">Mfg Signup</Link>
+            </div>
           </div>
         </div>
       </div>
