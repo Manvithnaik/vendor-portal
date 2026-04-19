@@ -24,7 +24,13 @@ const LoginPage = () => {
       setToast({ message: result.message, type: 'error' });
       return;
     }
-    navigate(`/${role}`);
+    if (result.user?.must_change_password) {
+      navigate('/admin/set-password');
+      return;
+    }
+
+    const userRole = result.user?.role || role;
+    navigate(`/${userRole}`);
   };
 
   return (
@@ -113,18 +119,25 @@ const LoginPage = () => {
             </button>
           </form>
 
-          <div className="mt-4 flex items-center justify-between text-sm">
-            <Link to="/forgot-password" disabled className="text-brand-500 hover:text-brand-700 transition-colors">Forgot password?</Link>
-            <div className="flex gap-3">
-              <Link to={role === 'manufacturer' ? "/register/manufacturer" : "/register/vendor"} className="text-accent-600 hover:text-accent-700 font-medium">Create account</Link>
-            </div>
-          </div>
+          <div className="mt-4 flex flex-col gap-3 text-sm">
+            <div className="flex items-center justify-between">
+              <Link to="/forgot-password" className="text-brand-500 hover:text-brand-700 transition-colors">
+                Forgot password?
+              </Link>
 
-          {/* Quick hint */}
-          <div className="mt-6 p-3 bg-surface-100 rounded-lg">
-            <p className="text-xs text-brand-400">
-              <strong>Demo admin:</strong> admin@vendorhub.com / admin123 (role: Admin)
-            </p>
+              <Link
+                to={role === 'manufacturer' ? "/register/manufacturer" : "/register/vendor"}
+                className="text-accent-600 hover:text-accent-700 font-medium"
+              >
+                Create account
+              </Link>
+            </div>
+
+            <div className="text-center pt-2 border-t border-surface-200">
+              <Link to="/track-application" className="text-brand-500 hover:text-brand-700 transition-colors">
+                Check Application Status
+              </Link>
+            </div>
           </div>
         </div>
       </div>
