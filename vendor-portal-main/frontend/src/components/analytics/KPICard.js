@@ -15,7 +15,7 @@ const KPICard = ({ kpi, onClick }) => {
       <p className="text-sm text-brand-500 font-medium mb-1">{label}</p>
       <div className="flex items-end justify-between items-center mb-3">
         <h3 className="font-display font-bold text-3xl text-brand-900 group-hover:text-brand-700 transition-colors">
-          {typeof value === 'number' && label.toLowerCase().includes('revenue') || label.toLowerCase().includes('spend') ? `$${value.toLocaleString()}` : value.toLocaleString()}
+          {typeof value === 'number' && (label.toLowerCase().includes('revenue') || label.toLowerCase().includes('spend')) ? `₹${value.toLocaleString()}` : (value?.toLocaleString() || value)}
         </h3>
         
         <div className={`flex items-center gap-1 text-sm font-medium px-2 py-1 rounded-full ${
