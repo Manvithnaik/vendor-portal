@@ -132,13 +132,13 @@ const LoginPage = () => {
                 Create account
               </Link>
             </div>
-
             <div className="text-center pt-2 border-t border-surface-200">
               <Link to="/track-application" className="text-brand-500 hover:text-brand-700 transition-colors">
                 Check Application Status
               </Link>
             </div>
           </div>
+
         </div>
       </div>
     </div>
