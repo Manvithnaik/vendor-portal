@@ -11,6 +11,7 @@ import {
   CheckCircle, XCircle, FileText, Package,
   ShoppingCart, Clock, Eye, ExternalLink
 } from 'lucide-react';
+import { toAbsUrl } from '../../utils/url';
 
 // ── Tab button ──────────────────────────────────────────────────────────────
 const Tab = ({ active, onClick, icon: Icon, label, count }) => (
@@ -483,7 +484,7 @@ const VendorOrders = () => {
               <div className="border-t border-surface-200 pt-4">
                 <p className="text-sm font-semibold text-brand-700 mb-2">Purchase Order Document</p>
                 <a
-                  href={viewOrder.po_document_url}
+                  href={toAbsUrl(viewOrder.po_document_url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 text-sm text-accent-600 hover:text-accent-700 font-medium"
