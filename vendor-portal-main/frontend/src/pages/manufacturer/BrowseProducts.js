@@ -117,7 +117,7 @@ const BrowseProducts = () => {
 
       {/* Products grid */}
       {filtered.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {filtered.map(p => {
             const alreadySent = hasRFQ(p.id);
             const qty = getQty(p.id);
@@ -127,8 +127,8 @@ const BrowseProducts = () => {
 
                 {/* Product image / icon */}
                 <div className="w-full h-36 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center mb-4 overflow-hidden">
-                  {p.image ? (
-                    <img src={p.image} alt={p.name} className="w-full h-full object-cover rounded-lg" />
+                  {p.specifications?.image || p.image ? (
+                    <img src={p.specifications?.image || p.image} alt={p.name} className="w-full h-full object-cover rounded-lg" />
                   ) : (
                     <Package size={32} className="text-blue-400" />
                   )}
@@ -186,8 +186,8 @@ const BrowseProducts = () => {
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row gap-6 items-start">
               <div className="w-full sm:w-1/3 aspect-square rounded-xl bg-gradient-to-br from-blue-50 to-indigo-100 border border-surface-200 flex flex-col items-center justify-center flex-shrink-0 overflow-hidden">
-                {selectedProduct.image ? (
-                  <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" />
+                {selectedProduct.specifications?.image || selectedProduct.image ? (
+                  <img src={selectedProduct.specifications?.image || selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" />
                 ) : (
                   <div className="text-center p-4">
                     <Package size={48} className="text-blue-300 mx-auto mb-2" />
@@ -225,11 +225,11 @@ const BrowseProducts = () => {
               </p>
             </div>
 
-            {selectedProduct.specifications && Object.keys(selectedProduct.specifications).length > 0 && (
+            {selectedProduct.specifications && Object.keys(selectedProduct.specifications).filter(k => k !== 'image').length > 0 && (
               <div>
                 <h3 className="text-sm font-bold text-brand-900 border-b border-surface-200 pb-2 mb-3">Specifications</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
-                  {Object.entries(selectedProduct.specifications).map(([key, value]) => (
+                  {Object.entries(selectedProduct.specifications).filter(([key]) => key !== 'image').map(([key, value]) => (
                     <div key={key} className="flex justify-between py-1.5 border-b border-surface-100 last:border-0">
                       <span className="text-xs font-medium text-brand-500 capitalize">{key.replace(/_/g, ' ')}</span>
                       <span className="text-xs font-semibold text-brand-800 text-right">{String(value)}</span>
@@ -266,8 +266,8 @@ const BrowseProducts = () => {
             {/* Product Summary */}
             <div className="flex items-start gap-3 p-3 bg-surface-100 rounded-lg">
               <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                {rfqProduct.image ? (
-                  <img src={rfqProduct.image} alt={rfqProduct.name} className="w-10 h-10 object-cover rounded-lg" />
+                {rfqProduct.specifications?.image || rfqProduct.image ? (
+                  <img src={rfqProduct.specifications?.image || rfqProduct.image} alt={rfqProduct.name} className="w-10 h-10 object-cover rounded-lg" />
                 ) : (
                   <Package size={18} className="text-blue-600" />
                 )}

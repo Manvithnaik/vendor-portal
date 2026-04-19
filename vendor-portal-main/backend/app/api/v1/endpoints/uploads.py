@@ -5,7 +5,7 @@ Returns a permanent URL that goes directly into po_document_url / other URL fiel
 """
 import os
 import uuid
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status, Request
 
 from app.core.config import settings
 from app.api.deps import get_current_user
@@ -40,11 +40,12 @@ def _upload_to_local(file_bytes: bytes, filename: str) -> str:
     filepath = os.path.join(upload_dir, unique_name)
     with open(filepath, "wb") as f:
         f.write(file_bytes)
-    return f"/uploads/files/{unique_name}"
+    return f"/uploads/{unique_name}"
 
 
 @router.post("/po-document", response_model=APIResponse)
 async def upload_po_document(
+    request: Request,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
@@ -75,7 +76,8 @@ async def upload_po_document(
     if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_KEY:
         file_url = _upload_to_supabase(file_bytes, safe_name, file.content_type)
     else:
-        file_url = _upload_to_local(file_bytes, safe_name)
+        local_path = _upload_to_local(file_bytes, safe_name)
+        file_url = str(request.base_url).rstrip("/") + local_path
 
     return APIResponse(
         status="success",
@@ -85,6 +87,7 @@ async def upload_po_document(
 
 @router.post("/image", response_model=APIResponse)
 async def upload_image(
+    request: Request,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
@@ -93,10 +96,10 @@ async def upload_image(
     Accepts JPEG/PNG, max 10 MB.
     Returns: { file_url: "https://..." }
     """
-    if file.content_type not in ("image/jpeg", "image/png", "image/webp"):
+    if file.content_type not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Only JPEG, PNG, or WEBP images are accepted."
+            detail="Only JPEG, PNG, WEBP, or GIF images are accepted."
         )
 
     file_bytes = await file.read()
@@ -112,7 +115,8 @@ async def upload_image(
     if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_KEY:
         file_url = _upload_to_supabase(file_bytes, safe_name, file.content_type)
     else:
-        file_url = _upload_to_local(file_bytes, safe_name)
+        local_path = _upload_to_local(file_bytes, safe_name)
+        file_url = str(request.base_url).rstrip("/") + local_path
 
     return APIResponse(
         status="success",

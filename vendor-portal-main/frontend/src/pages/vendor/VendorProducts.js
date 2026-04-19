@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { productService } from '../../services/productService';
+import { uploadService } from '../../services/uploadService';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
 import { Plus, Edit3, Trash2, Package, ImagePlus, X, AlertCircle } from 'lucide-react';
@@ -15,12 +16,14 @@ const readFileAsBase64 = (file) =>
   });
 
 // ── Product card ─────────────────────────────────────────────────────────────
-const ProductCard = ({ p, onEdit, onDelete }) => (
+const ProductCard = ({ p, onEdit, onDelete }) => {
+  const imageUrl = p.specifications?.image || p.image;
+  return (
   <div className="card overflow-hidden hover:shadow-elevated transition-shadow flex flex-col">
     {/* Image / placeholder */}
     <div className="w-full h-40 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center overflow-hidden">
-      {p.image ? (
-        <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
+      {imageUrl ? (
+        <img src={imageUrl} alt={p.name} className="w-full h-full object-cover" />
       ) : (
         <Package size={36} className="text-blue-300" />
       )}
@@ -53,7 +56,8 @@ const ProductCard = ({ p, onEdit, onDelete }) => (
       </p>
     </div>
   </div>
-);
+  );
+};
 
 // ── Empty file form state ────────────────────────────────────────────────────
 const EMPTY_FORM = { name: '', sku: '', description: '', category_id: 1, image: '' };
@@ -66,10 +70,13 @@ const VendorProducts = () => {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [submitting, setSubmitting] = useState(false);
+
 
   // Image state
   const [imagePreview, setImagePreview] = useState('');
   const [imageError, setImageError] = useState('');
+  const [imageFile, setImageFile] = useState(null);
   const imageInputRef = useRef(null);
 
   const load = async () => {
@@ -88,6 +95,7 @@ const VendorProducts = () => {
     setShowForm(false);
     setImagePreview('');
     setImageError('');
+    setImageFile(null);
     if (imageInputRef.current) imageInputRef.current.value = '';
   };
 
@@ -96,6 +104,7 @@ const VendorProducts = () => {
     const file = e.target.files[0];
     setImageError('');
     setImagePreview('');
+    setImageFile(null);
 
     if (!file) return;
 
@@ -109,26 +118,26 @@ const VendorProducts = () => {
       return;
     }
 
-    try {
-      const base64 = await readFileAsBase64(file);
-      setImagePreview(base64);
-      setForm(f => ({ ...f, image: base64 }));
-    } catch {
-      setImageError('Failed to read image. Please try again.');
-    }
+    const objectUrl = URL.createObjectURL(file);
+    setImagePreview(objectUrl);
+    setImageFile(file);
+    setForm(f => ({ ...f, image: objectUrl }));
   };
 
   const removeImage = () => {
     setImagePreview('');
     setImageError('');
+    setImageFile(null);
     setForm(f => ({ ...f, image: '' }));
     if (imageInputRef.current) imageInputRef.current.value = '';
   };
 
   // ── Open edit modal ──
   const handleEdit = (p) => {
-    setForm({ name: p.name, sku: p.sku || '', description: p.description || '', category_id: p.category_id || 1, image: p.image || '' });
-    setImagePreview(p.image || '');
+    const imageUrl = p.specifications?.image || p.image || '';
+    setForm({ name: p.name, sku: p.sku || '', description: p.description || '', category_id: p.category_id || 1, image: imageUrl });
+    setImagePreview(imageUrl);
+    setImageFile(null);
     setEditing(p);
     setShowForm(true);
   };
@@ -137,11 +146,30 @@ const VendorProducts = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) return;
+    
+    // Mandatory image check
+    if (!imageFile && !imagePreview) {
+      setImageError("Product image is strictly required.");
+      return;
+    }
+
+    setSubmitting(true);
     const sku = form.sku.trim() || form.name.trim().toUpperCase().replace(/\s+/g, '-').slice(0, 30) + '-' + Date.now().toString().slice(-4);
     try {
+      let finalImageUrl = form.image; // Assume existing string URL if not overwritten
+
+      // Upload if a new file is chosen
+      if (imageFile) {
+        const uploadRes = await uploadService.uploadImage(imageFile);
+        finalImageUrl = uploadRes.file_url;
+      }
+
       if (editing) {
         await productService.updateProduct(editing.id, {
-          name: form.name, description: form.description, category_id: Number(form.category_id)
+          name: form.name, 
+          description: form.description, 
+          category_id: Number(form.category_id),
+          specifications: { ...(editing.specifications || {}), image: finalImageUrl }
         });
         setToast({ message: 'Product updated.', type: 'success' });
       } else {
@@ -151,6 +179,7 @@ const VendorProducts = () => {
           description:         form.description || undefined,
           category_id:         Number(form.category_id),
           manufacturer_org_id: user.org_id,   // injected from auth context
+          specifications:      { image: finalImageUrl }
         });
         setToast({ message: 'Product added.', type: 'success' });
       }
@@ -158,6 +187,8 @@ const VendorProducts = () => {
       load();
     } catch (err) {
       setToast({ message: err.message || 'Failed to save product', type: 'error' });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -190,7 +221,7 @@ const VendorProducts = () => {
 
       {/* Products grid */}
       {products.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {products.map(p => (
             <ProductCard key={p.id} p={p} onEdit={handleEdit} onDelete={handleDelete} />
           ))}
@@ -212,7 +243,7 @@ const VendorProducts = () => {
           {/* Product Image Upload */}
           <div>
             <label className="block text-sm font-medium text-brand-700 mb-1.5">
-              Product Image <span className="text-brand-400 font-normal">(optional)</span>
+              Product Image <span className="text-red-500 ml-1">*</span>
             </label>
 
             {imagePreview ? (
@@ -319,9 +350,9 @@ const VendorProducts = () => {
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={resetForm} className="btn-secondary">Cancel</button>
-            <button type="submit" className="btn-primary">
-              {editing ? 'Update' : 'Add'} Product
+            <button type="button" onClick={resetForm} className="btn-secondary" disabled={submitting}>Cancel</button>
+            <button type="submit" className="btn-primary" disabled={submitting}>
+              {submitting ? 'Saving...' : (editing ? 'Update' : 'Add')} Product
             </button>
           </div>
         </form>
