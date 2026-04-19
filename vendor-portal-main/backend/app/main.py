@@ -21,13 +21,10 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS config — wildcard + credentials is rejected by browsers; use explicit origins
+# CORS config
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=settings.CORS_ORIGINS or ["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -54,3 +51,5 @@ except Exception:  # noqa: BLE001
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the Unified B2B Platform API"}
+
+# Trigger reload

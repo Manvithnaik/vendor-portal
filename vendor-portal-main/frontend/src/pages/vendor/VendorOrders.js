@@ -303,7 +303,7 @@ const VendorOrders = () => {
       </div>
 
       {/* ── Submit Quote Modal ── */}
-      <Modal open={!!quoteRFQ} onClose={resetQuoteModal} title="Submit Quotation">
+      <Modal open={!!quoteRFQ} onClose={resetQuoteModal} title="Submit Quotation" size="lg">
         {quoteRFQ && (
           <form onSubmit={handleQuoteSubmit} className="space-y-4">
             <div className="p-3 bg-surface-100 rounded-lg">
@@ -435,7 +435,7 @@ const VendorOrders = () => {
       </Modal>
 
       {/* ── PO Detail Modal ── */}
-      <Modal open={!!viewOrder} onClose={() => setViewOrder(null)} title="Purchase Order Details">
+      <Modal open={!!viewOrder} onClose={() => setViewOrder(null)} title="Purchase Order Details" size="lg">
         {viewOrder && (
           <div className="space-y-4">
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">

@@ -12,7 +12,7 @@ from app.models.vendor_portal import Admin
 from app.models.enums import OrgTypeEnum, RoleOrgTypeEnum, VerifyStatusEnum
 from app.repositories.user_repo import UserRepository, AdminRepository
 from app.repositories.organization_repo import OrganizationRepository
-from app.schemas.auth import RegisterRequest, LoginRequest, AdminLoginRequest
+from app.schemas.auth import RegisterRequest, LoginRequest, AdminLoginRequest, PasswordChangeRequest
 from app.utils.mappers import map_role_to_org_type, map_org_type_to_role
 from app.exceptions import (
     ConflictException, UnauthorizedException, NotFoundException,
@@ -46,10 +46,14 @@ class AuthService:
             )
 
         # Conflict: email already registered as an org
-        if self.org_repo.get_by_email(data.email):
-            raise ConflictException(
-                f"An organization with email '{data.email}' already exists."
-            )
+        existing_org = self.org_repo.get_by_email(data.email)
+        if existing_org:
+            if existing_org.verification_status == VerifyStatusEnum.rejected:
+                return self._handle_resubmission(existing_org, data, org_type)
+            else:
+                raise ConflictException(
+                    f"An organization with email '{data.email}' already exists."
+                )
 
         # Conflict: email already registered as a user
         if self.user_repo.get_by_email(data.email):
@@ -129,6 +133,56 @@ class AuthService:
             ),
         }
 
+    def _handle_resubmission(self, org: Organization, data: RegisterRequest, org_type: OrgTypeEnum) -> dict:
+        """
+        Handles resubmitting a rejected application.
+        Updates the organization and user details, and sets status back to pending.
+        """
+        try:
+            # Update Organization
+            org.name = data.org_name
+            org.org_type = org_type
+            org.phone = data.phone
+            org.address_line1 = data.address_line1
+            org.city = data.city
+            org.state = data.state
+            org.country = data.country
+            org.postal_code = data.postal_code
+            org.website = data.website
+            org.verification_status = VerifyStatusEnum.pending
+            org.updated_at = datetime.utcnow()
+
+            # Find and update User
+            user = self.user_repo.get_by_email(data.email)
+            if not user:
+                # Should not happen ideally, but if missing, raise error
+                raise DatabaseException(details={"error": "Associated user record missing for this organization."})
+            
+            user.first_name = data.first_name
+            user.last_name = data.last_name
+            user.phone = data.user_phone
+            user.password_hash = hash_password(data.password)
+            user.updated_at = datetime.utcnow()
+
+            self.db.commit()
+            self.db.refresh(org)
+            self.db.refresh(user)
+        except Exception as exc:
+            self.db.rollback()
+            raise DatabaseException(details={"error": str(exc)})
+
+        return {
+            "org_id": org.id,
+            "user_id": user.id,
+            "email": user.email,
+            "org_name": org.name,
+            "role": data.role,
+            "verification_status": org.verification_status.value,
+            "message": (
+                "Registration resubmitted successfully. Your account is pending admin approval."
+            ),
+        }
+
     # ------------------------------------------------------------------
     # Login — Portal Users
     # ------------------------------------------------------------------
@@ -169,20 +223,28 @@ class AuthService:
         if not user.is_active:
             raise UnauthorizedException("Your account has been deactivated.")
 
-        # Check org verification status
-        org = self.org_repo.get(user.org_id)
+        # Org info is pre-fetched via joinedload in get_by_email
+        org = user.organization
         if org and org.verification_status != VerifyStatusEnum.verified:
-            raise BusinessRuleException(
-                f"Your organization's application is currently "
-                f"'{org.verification_status.value}'. Only approved accounts can log in."
-            )
+            if org.verification_status == VerifyStatusEnum.pending:
+                raise BusinessRuleException("Your application is not approved yet. Please check your application status.")
+            elif org.verification_status == VerifyStatusEnum.rejected:
+                raise BusinessRuleException("Your application was rejected. Please resubmit.")
+            else:
+                raise BusinessRuleException(
+                    f"Your organization's application is currently "
+                    f"'{org.verification_status.value}'. Only approved accounts can log in."
+                )
 
         # Map org type to frontend role
         role = map_org_type_to_role(org.org_type) if org else "vendor"
 
-        # Update last_login
-        user.last_login = datetime.utcnow()
-        self.db.commit()
+        # Update last_login in background — don't block the login response
+        try:
+            user.last_login = datetime.utcnow()
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
 
         token = create_access_token(
             subject=user.id,
@@ -213,15 +275,27 @@ class AuthService:
         if not admin or not verify_password(data.password, admin.password_hash):
             raise UnauthorizedException("Invalid admin credentials.")
 
-        if not admin.is_active or admin.status != "active":
-            raise UnauthorizedException("Admin account is inactive or suspended.")
+        if not admin.is_active:
+            raise UnauthorizedException("Admin account is inactive.")
 
-        admin.last_login_at = datetime.utcnow()
-        self.db.commit()
+        # Determine if this is the first login (before updating)
+        must_change = (admin.last_login_at is None)
+
+        # Update last_login — non-blocking best-effort
+        try:
+            admin.last_login_at = datetime.utcnow()
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
 
         token = create_access_token(
             subject=admin.id,
-            extra_claims={"role": admin.role, "type": "admin"},
+            extra_claims={
+                "role": admin.role, 
+                "type": "admin",
+                "access_level": admin.access_level,
+                "status": admin.status
+            },
         )
 
         return {
@@ -229,9 +303,24 @@ class AuthService:
             "token_type": "bearer",
             "admin_id": admin.id,
             "role": admin.role,
+            "access_level": admin.access_level,
             "name": admin.name,
             "email": admin.email,
+            "must_change_password": must_change
         }
+
+    def change_admin_password(self, admin_id: int, current_password: str, new_password: str) -> None:
+        """Verifies current password and updates to new password."""
+        admin = self.admin_repo.get(admin_id)
+        if not admin:
+            raise NotFoundException("Admin")
+        
+        if not verify_password(current_password, admin.password_hash):
+            raise UnauthorizedException("Current password incorrect.")
+        
+        admin.password_hash = hash_password(new_password)
+        admin.status = "active"
+        self.admin_repo.update(admin)
 
     # ------------------------------------------------------------------
     # Get current user from token subject
@@ -308,3 +397,76 @@ class AuthService:
         except Exception as exc:
             self.db.rollback()
             raise DatabaseException(details={"error": "Could not update password"})
+
+    def get_application_status(self, email: str) -> dict:
+        """
+        Retrieves the application status for a given email.
+        """
+        org = self.org_repo.get_by_email(email)
+        if not org:
+            return {"status": "not_found"}
+        
+        result = {
+            "status": org.verification_status.value,
+            "role": map_org_type_to_role(org.org_type)
+        }
+        
+        # If rejected, provide some basic pre-fill data for resubmission
+        if org.verification_status == VerifyStatusEnum.rejected:
+            user = self.user_repo.get_by_email(email)
+            result.update({
+                "org_name": org.name,
+                "phone": org.phone,
+                "address_line1": org.address_line1,
+                "city": org.city,
+                "state": org.state,
+                "country": org.country,
+                "postal_code": org.postal_code,
+                "website": org.website,
+                "first_name": user.first_name if user else "",
+                "last_name": user.last_name if user else "",
+                "user_phone": user.phone if user else ""
+            })
+            
+        return result
+
+    def change_password(self, user_id: int, data: PasswordChangeRequest) -> None:
+        """
+        Updates the password for a portal user.
+        """
+        user = self.get_user_by_id(user_id)
+        if not verify_password(data.current_password, user.password_hash):
+            raise UnauthorizedException("Incorrect current password.")
+
+        try:
+            user.password_hash = hash_password(data.new_password)
+            user.updated_at = datetime.utcnow()
+            self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            raise DatabaseException(details={"error": str(exc)})
+
+    def set_admin_password(self, admin_id: int, new_password: str) -> None:
+        """
+        Sets the password for an admin and marks them as active.
+        Used for first-time password change.
+        """
+        admin = self.get_admin_by_id(admin_id)
+        
+        # Validation: min 8 chars, 1 uppercase, 1 number
+        if len(new_password) < 8:
+            raise ValidationException("Password must be at least 8 characters long.")
+        if not any(c.isupper() for c in new_password):
+            raise ValidationException("Password must contain at least one uppercase letter.")
+        if not any(c.isdigit() for c in new_password):
+            raise ValidationException("Password must contain at least one number.")
+
+        try:
+            admin.password_hash = hash_password(new_password)
+            admin.status = "active"
+            admin.updated_at = datetime.utcnow()
+            self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            raise DatabaseException(details={"error": str(exc)})
+

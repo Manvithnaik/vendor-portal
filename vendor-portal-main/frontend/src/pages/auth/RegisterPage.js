@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { authService } from '../../services/authService';
 import { ArrowLeft, Upload, CheckCircle } from 'lucide-react';
 import Toast from '../../components/common/Toast';
@@ -25,6 +25,10 @@ const Field = ({ label, name, type = 'text', required = true, placeholder, value
 const RegisterPage = () => {
   const { role } = useParams(); // 'vendor' or 'manufacturer'
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const resubmitEmail = searchParams.get('email');
+  const isResubmit = searchParams.get('resubmit') === 'true';
+
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(false);
   const isManufacturer = role === 'manufacturer';
@@ -40,6 +44,35 @@ const RegisterPage = () => {
     // Manufacturer extras
     gstNumber: '', businessLicense: '', annualTurnover: '',
   });
+
+  React.useEffect(() => {
+    if (isResubmit && resubmitEmail) {
+      const fetchPreFillData = async () => {
+        try {
+          const res = await authService.getApplicationStatus(resubmitEmail);
+          if (res.status === 'success' && res.data && res.data.status === 'rejected') {
+            const data = res.data;
+            setForm(prev => ({
+              ...prev,
+              orgName: data.org_name || '',
+              email: resubmitEmail || '',
+              phone: data.phone || '',
+              addressLine1: data.address_line1 || '',
+              city: data.city || '',
+              state: data.state || '',
+              country: data.country || '',
+              postalCode: data.postal_code || '',
+              contactName: (data.first_name || data.last_name) ? `${data.first_name || ''} ${data.last_name || ''}`.trim() : '',
+              contactPhone: data.user_phone || '',
+            }));
+          }
+        } catch (error) {
+          console.error("Failed to fetch resubmit data", error);
+        }
+      };
+      fetchPreFillData();
+    }
+  }, [isResubmit, resubmitEmail]);
 
   const onChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -104,9 +137,11 @@ const RegisterPage = () => {
           </Link>
           <div>
             <h1 className="font-display font-bold text-lg text-brand-900">
-              {isManufacturer ? 'Manufacturer' : 'Vendor'} Registration
+              {isResubmit ? 'Resubmit' : ''} {isManufacturer ? 'Manufacturer' : 'Vendor'} Registration
             </h1>
-            <p className="text-sm text-brand-400">Fill out the form to submit your application</p>
+            <p className="text-sm text-brand-400">
+              {isResubmit ? 'Update your details and resubmit your application' : 'Fill out the form to submit your application'}
+            </p>
           </div>
         </div>
       </div>

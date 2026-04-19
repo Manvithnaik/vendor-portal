@@ -91,3 +91,11 @@ yarn-error.log*
 *.swp
 *.swo
 *.sublime-workspace
+
+# Uploads and generated files
+**/backend/uploads/
+
+# Local debug/test files
+outbox.txt
+test_*.py
+debug_*.py
