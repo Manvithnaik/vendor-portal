@@ -6,6 +6,7 @@ import Toast from '../../components/common/Toast';
 import Modal from '../../components/common/Modal';
 import RatingModal from '../../components/common/RatingModal';
 import { Eye, FileText, ExternalLink, Star } from 'lucide-react';
+import { toAbsUrl } from '../../utils/url';
 
 const PurchaseOrders = () => {
   const { user } = useAuth();
@@ -137,7 +138,7 @@ const PurchaseOrders = () => {
                 <div className="flex items-center gap-2 text-sm text-brand-600 mb-2">
                   <FileText size={14} />
                   <a
-                    href={viewOrder.po_document_url}
+                    href={toAbsUrl(viewOrder.po_document_url)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-accent-600 hover:text-accent-700 font-medium inline-flex items-center gap-1"

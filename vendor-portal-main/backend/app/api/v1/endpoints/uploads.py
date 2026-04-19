@@ -70,14 +70,13 @@ async def upload_po_document(
             detail="File exceeds 10 MB limit."
         )
 
-    safe_name = os.path.basename(file.filename or "document.pdf")
+    safe_name = os.path.basename(file.filename or "document.pdf").replace(",", "_").replace("|", "_")
 
     # Use Supabase if configured, otherwise local disk
     if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_KEY:
         file_url = _upload_to_supabase(file_bytes, safe_name, file.content_type)
     else:
-        local_path = _upload_to_local(file_bytes, safe_name)
-        file_url = str(request.base_url).rstrip("/") + local_path
+        file_url = _upload_to_local(file_bytes, safe_name)
 
     return APIResponse(
         status="success",
@@ -110,13 +109,12 @@ async def upload_image(
             detail="File exceeds 10 MB limit."
         )
 
-    safe_name = os.path.basename(file.filename or "image.jpg")
+    safe_name = os.path.basename(file.filename or "image.jpg").replace(",", "_").replace("|", "_")
 
     if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_KEY:
         file_url = _upload_to_supabase(file_bytes, safe_name, file.content_type)
     else:
-        local_path = _upload_to_local(file_bytes, safe_name)
-        file_url = str(request.base_url).rstrip("/") + local_path
+        file_url = _upload_to_local(file_bytes, safe_name)
 
     return APIResponse(
         status="success",
