@@ -9,9 +9,11 @@ export const LineChartTrend = ({ data, dataKey = 'revenue', xKey = 'name', title
         <LineChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
           <XAxis dataKey={xKey} axisLine={false} tickLine={false} tick={{fill: '#64748B', fontSize: 12}} dy={10} />
-          <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748B', fontSize: 12}} tickFormatter={(value) => `$${value}`} />
+          <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748B', fontSize: 12}} tickFormatter={(value) => `₹${value.toLocaleString()}`} />
           <Tooltip 
-            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+            formatter={(value) => [`₹${Number(value).toLocaleString()}`, 'Spend']}
+            labelFormatter={(label) => `Date: ${label}`}
+            contentStyle={{ borderRadius: '8px', border: '1px solid #ECEFF1', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', padding: '10px' }}
           />
           <Line 
             type="monotone" 
@@ -38,7 +40,8 @@ export const BarChartDistribution = ({ data, dataKey = 'value', xKey = 'name', t
           <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748B', fontSize: 12}} />
           <Tooltip 
             cursor={{fill: '#F1F5F9'}}
-            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+            formatter={(value) => [Number(value).toLocaleString(), 'Volume/Spend']}
+            contentStyle={{ borderRadius: '8px', border: '1px solid #ECEFF1', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
           />
           <Bar dataKey={dataKey} fill="#4F46E5" radius={[4, 4, 0, 0]} maxBarSize={50} />
         </BarChart>
