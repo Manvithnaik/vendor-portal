@@ -9,6 +9,9 @@ class OrderRepository(BaseRepository[Order]):
     def __init__(self, db: Session):
         super().__init__(Order, db)
 
+    def get(self, id: int) -> Optional[Order]:
+        return self.db.query(Order).options(joinedload(Order.items).joinedload(OrderItem.product)).filter(Order.id == id).first()
+
     def get_by_org(
         self,
         org_id: int,

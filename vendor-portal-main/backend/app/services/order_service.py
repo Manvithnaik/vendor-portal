@@ -108,7 +108,19 @@ class OrderService:
 
             # Seed total from accepted quote price; item unit prices updated later
             total = float(quote.price) if quote.price else 0.0
-            for item_data in data.items:
+            
+            # Fallback if frontend forgot to pass items: auto-generate from RFQ
+            items_to_create = data.items
+            if not items_to_create and quote.rfq.product_id:
+                from app.schemas.order import OrderItemCreate
+                items_to_create = [
+                    OrderItemCreate(
+                        product_id=quote.rfq.product_id,
+                        quantity=1,
+                    )
+                ]
+
+            for item_data in items_to_create:
                 item = OrderItem(
                     order_id=order.id,
                     product_id=item_data.product_id,
@@ -116,7 +128,7 @@ class OrderService:
                     quantity=item_data.quantity,
                     unit=item_data.unit,
                     unit_price=0.00,
-                    notes=item_data.notes,
+                    notes=item_data.notes if hasattr(item_data, 'notes') else None,
                 )
                 self.db.add(item)
 
