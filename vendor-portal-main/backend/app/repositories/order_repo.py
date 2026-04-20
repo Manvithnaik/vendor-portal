@@ -1,5 +1,5 @@
 from typing import List, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.models.order import Order, OrderItem, OrderStatusHistory
 from app.models.enums import OrderStatusEnum
 from app.repositories.base import BaseRepository
@@ -23,10 +23,13 @@ class OrderRepository(BaseRepository[Order]):
             q = self.db.query(Order).filter(Order.manufacturer_org_id == org_id)
         if status:
             q = q.filter(Order.status == status)
+        
+        q = q.options(joinedload(Order.items).joinedload(OrderItem.product))
+        
         return q.order_by(Order.created_at.desc()).offset(skip).limit(limit).all()
 
     def get_by_number(self, order_number: str) -> Optional[Order]:
-        return self.db.query(Order).filter(Order.order_number == order_number).first()
+        return self.db.query(Order).options(joinedload(Order.items).joinedload(OrderItem.product)).filter(Order.order_number == order_number).first()
 
     def get_by_contract(self, contract_id: int) -> List[Order]:
         return self.db.query(Order).filter(Order.contract_id == contract_id).all()
