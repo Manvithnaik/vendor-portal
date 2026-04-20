@@ -88,6 +88,10 @@ class OrderItem(Base):
     product = relationship("Product", back_populates="order_items")
     contract_pricing = relationship("ContractProductPricing", back_populates="order_items")
 
+    @property
+    def product_name(self):
+        return self.product.name if self.product else None
+
 
 class OrderStatusHistory(Base):
     __tablename__ = "order_status_history"

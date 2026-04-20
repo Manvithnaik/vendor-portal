@@ -5,6 +5,7 @@ import Toast from '../../components/common/Toast';
 import { RotateCcw, Plus, Eye, X, Package, Truck, CheckCircle2, Clock, AlertCircle, XCircle, Inbox, ArrowLeft, Loader2 } from 'lucide-react';
 import Modal from '../../components/common/Modal';
 import { toAbsUrl } from '../../utils/url';
+import { getProductSummary } from '../../utils/orderUtils';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
 
@@ -216,7 +217,7 @@ const ManufacturerReturns = () => {
                     className={`hover:bg-surface-50 transition-colors ${TERMINAL.has(d.status) ? 'opacity-50' : ''}`}
                   >
                     <td className="px-5 py-3 font-mono text-xs text-brand-500">{d.order_number || d.id}</td>
-                    <td className="px-5 py-3 font-medium text-brand-800">{d.product_name}</td>
+                    <td className="px-5 py-3 font-medium text-brand-800">{getProductSummary(d)}</td>
                     <td className="px-5 py-3 text-brand-500">{d.dispute_type}</td>
                     <td className="px-5 py-3 text-xs text-brand-400">{fmtDate(d.created_at)}</td>
                     <td className="px-5 py-3">
@@ -265,7 +266,7 @@ const ManufacturerReturns = () => {
           <div className="space-y-6">
             <div className="flex items-center justify-between -mt-2 mb-4">
               <p className="text-xs text-brand-400">
-                Order {selected.order_number || selected.id} · {selected.product_name}
+                Order {selected.order_number || selected.id} · {getProductSummary(selected)}
               </p>
 
               {/* NEW: View PO Button */}

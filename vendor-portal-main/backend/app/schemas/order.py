@@ -35,6 +35,7 @@ class OrderItemCreate(BaseModel):
 class OrderItemResponse(BaseModel):
     id: int
     product_id: int
+    product_name: Optional[str] = None
     contract_pricing_id: Optional[int] = None
     quantity: int
     shipped_qty: float
