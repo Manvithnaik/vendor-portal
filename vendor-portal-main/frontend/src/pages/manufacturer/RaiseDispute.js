@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import apiClient from '../../api/client';
 import Toast from '../../components/common/Toast';
 import { Upload, ArrowLeft, AlertCircle, X, ImagePlus } from 'lucide-react';
+import { getProductSummary } from '../../utils/orderUtils';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
 const MAX_FILES = 2;
@@ -140,7 +141,7 @@ const RaiseDispute = () => {
                 <option value="" disabled>-- Choose an eligible order --</option>
                 {orders.map(o => (
                   <option key={o.id} value={o.id}>
-                    Order #{o.order_number || o.id} - {o.productName || 'Product'}
+                    Order #{o.order_number || o.id} - {getProductSummary(o)}
                   </option>
                 ))}
               </select>
