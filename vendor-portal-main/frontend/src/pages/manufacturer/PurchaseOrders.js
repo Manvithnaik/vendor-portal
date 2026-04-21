@@ -5,7 +5,7 @@ import StatusBadge from '../../components/common/StatusBadge';
 import Toast from '../../components/common/Toast';
 import Modal from '../../components/common/Modal';
 import RatingModal from '../../components/common/RatingModal';
-import { Eye, FileText, ExternalLink, Star } from 'lucide-react';
+import { Eye, FileText, ExternalLink } from 'lucide-react';
 import { toAbsUrl } from '../../utils/url';
 import { getProductSummary } from '../../utils/orderUtils';
 
@@ -69,15 +69,6 @@ const PurchaseOrders = () => {
                   </td>
                   <td className="px-5 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      {o.status === 'shipped' && !ratedOrders.has(o.id) && (
-                        <button 
-                          onClick={() => setRatingOrder(o)} 
-                          className="p-1.5 rounded-lg hover:bg-orange-50 text-orange-400 hover:text-orange-600" 
-                          title="Rate Order"
-                        >
-                          <Star size={15} />
-                        </button>
-                      )}
                       <button onClick={() => setViewOrder(o)} className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-400 hover:text-brand-700" title="View Details">
                         <Eye size={15} />
                       </button>

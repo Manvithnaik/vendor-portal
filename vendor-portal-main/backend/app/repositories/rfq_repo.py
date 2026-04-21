@@ -12,6 +12,7 @@ class RFQRepository(BaseRepository[RFQ]):
     def get_by_org(self, org_id: int) -> List[RFQ]:
         return (
             self.db.query(RFQ)
+            .options(joinedload(RFQ.org))
             .filter(RFQ.org_id == org_id, RFQ.deleted_at.is_(None))
             .order_by(RFQ.created_at.desc())
             .all()
@@ -29,6 +30,7 @@ class RFQRepository(BaseRepository[RFQ]):
         )
         return (
             self.db.query(RFQ)
+            .options(joinedload(RFQ.org))
             .filter(
                 RFQ.deleted_at.is_(None),
                 or_(targeted_to_me, ~has_any_broadcast)  # broadcast to me, or open to all

@@ -40,7 +40,7 @@ const QuoteCard = ({ q, onPlaceOrder, onViewDetails }) => (
         <p className="text-xs text-brand-400">
           Lead time: <span className="font-medium text-brand-600">{q.lead_time_days} days</span>
           {' · '}
-          by Org #{q.manufacturer_org_id}
+          by {q.manufacturer_org_name || `Org #${q.manufacturer_org_id}`}
           {' · '}
           {q.created_at ? new Date(q.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
         </p>
@@ -450,7 +450,7 @@ const Quotations = () => {
               <div>
                 <p className="font-semibold text-brand-900 border-b pb-1 mb-2">Vendor Details</p>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
-                  <div><dt className="text-brand-400">Vendor Name</dt><dd className="font-medium text-brand-800">{viewQuoteData.quote.manufacturer_org.name || '—'}</dd></div>
+                  <div><dt className="text-brand-400">Vendor Name</dt><dd className="font-medium text-brand-800">{viewQuoteData.quote.manufacturer_org_name || viewQuoteData.quote.manufacturer_org?.name || '—'}</dd></div>
                   <div><dt className="text-brand-400">Contact</dt><dd className="font-medium text-brand-800">{viewQuoteData.quote.manufacturer_org.contact_name || '—'}</dd></div>
                   <div className="col-span-2"><dt className="text-brand-400">Email & Phone</dt><dd className="font-medium text-brand-800">
                     {viewQuoteData.quote.manufacturer_org.contact_email || '—'} / {viewQuoteData.quote.manufacturer_org.contact_phone || '—'}

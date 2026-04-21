@@ -63,6 +63,7 @@ class RFQResponse(BaseModel):
     status: RfqStatusEnum
     created_at: datetime
     updated_at: datetime
+    org_name: Optional[str] = None
     org: Optional[OrganizationCompact] = None
     category: Optional[ProductCategoryCompact] = None
     product: Optional[ProductCompact] = None
@@ -91,6 +92,7 @@ class QuoteResponse(BaseModel):
     is_locked: bool
     status: QuoteStatusEnum  # NEW: submitted | accepted | rejected
     created_at: datetime
+    manufacturer_org_name: Optional[str] = None
     manufacturer_org: Optional[OrganizationCompact] = None
 
 

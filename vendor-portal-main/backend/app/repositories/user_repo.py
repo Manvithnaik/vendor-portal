@@ -10,19 +10,15 @@ class UserRepository(BaseRepository[User]):
         super().__init__(User, db)
 
     def get(self, record_id: int) -> Optional[User]:
-        from sqlalchemy.orm import joinedload
         return (
             self.db.query(User)
-            .options(joinedload(User.organization))
             .filter(User.id == record_id)
             .first()
         )
 
     def get_by_email(self, email: str) -> Optional[User]:
-        from sqlalchemy.orm import joinedload
         return (
             self.db.query(User)
-            .options(joinedload(User.organization))
             .filter(User.email == email, User.deleted_at.is_(None))
             .first()
         )

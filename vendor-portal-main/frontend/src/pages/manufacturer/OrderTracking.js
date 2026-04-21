@@ -26,8 +26,11 @@ const analyzeOrderData = (order) => {
   Object.entries(order).forEach(([key, value]) => {
     const lKey = key.toLowerCase();
 
-    // Skip empty values but keep nulls to display "Not available"
-    if (value === undefined) return;
+    // Skip po_document_url as requested
+    if (lKey === 'po_document_url') return;
+
+    // Skip empty values
+    if (value === undefined || value === null || value === '') return;
 
     // Dates/Timestamps
     if ((lKey.endsWith('_at') || lKey.endsWith('_date') || lKey.includes('timestamp') || lKey.includes('time') || lKey.includes('date')) 
@@ -42,10 +45,6 @@ const analyzeOrderData = (order) => {
     // Numerics
     else if (typeof value === 'number' && !lKey.includes('id')) {
       numerics[key] = value;
-    }
-    // Null defaults
-    else if (value === null) {
-      if (!lKey.includes('id')) textFields[key] = "Not available";
     }
     // Text fields
     else if (typeof value === 'string' && !lKey.includes('id') && lKey !== 'status' && lKey !== 'state') {
@@ -320,11 +319,11 @@ const SideDrawer = ({ order, onClose }) => {
                     </h4>
                     <div className="space-y-1 px-1">
                       {Object.entries(data.textFields).map(([k, v]) => {
-                        if (v === data.title) return null;
+                        if (v === data.title || v === 'Not available' || !v) return null;
                         return (
                           <div key={k} className="flex justify-between items-start gap-4 py-2.5 border-b border-surface-50 last:border-0 hover:bg-surface-50 -mx-2 px-2 rounded transition-colors">
                             <span className="text-brand-500 whitespace-nowrap text-xs mt-0.5">{formatLabel(k)}</span>
-                            <span className={`font-medium text-right break-words text-sm ${v === 'Not available' ? 'text-brand-300 italic font-normal' : 'text-brand-900'}`}>
+                            <span className="font-medium text-right break-words text-sm text-brand-900">
                               {v}
                             </span>
                           </div>

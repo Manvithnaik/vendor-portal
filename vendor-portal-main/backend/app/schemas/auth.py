@@ -35,6 +35,20 @@ class RegisterRequest(BaseModel):
     country: Optional[str] = None
     postal_code: Optional[str] = None
     website: Optional[str] = None
+    
+    # Newly added fields to ensure registration data is captured
+    industry_type: Optional[str] = None
+    factory_address: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    signatory_name: Optional[str] = None
+    signatory_phone: Optional[str] = None
+    
+    # Manufacturer specific
+    gst_number: Optional[str] = None
+    business_license: Optional[str] = None
+    annual_turnover: Optional[str] = None
 
     # User-level details
     first_name: str

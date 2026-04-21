@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
 from app.models.enums import OrgTypeEnum, VerifyStatusEnum
 
 
@@ -64,6 +64,12 @@ class OrganizationUpdate(BaseModel):
     factory_address: Optional[str] = None
     authorised_signatory_name: Optional[str] = None
     authorised_signatory_phone: Optional[str] = None
+    
+    # Manufacturer extras
+    annual_turnover: Optional[str] = None
+    gst_number: Optional[str] = None
+    business_license: Optional[str] = None
+
 
 
 class OrganizationResponse(BaseModel):
@@ -92,6 +98,13 @@ class OrganizationResponse(BaseModel):
     authorised_signatory_phone: Optional[str] = None
     overall_rating: Optional[float] = None
     verification_status: VerifyStatusEnum
+    
+    # Simplified access for frontend
+    gst_number: Optional[str] = None
+    business_license: Optional[str] = None
+    annual_turnover: Optional[str] = None
+
+    
     verification_certificates: list[BusinessVerificationCertificateResponse] = []
     financial_details: Optional[FinancialDetailsResponse] = None
     is_active: bool
@@ -99,3 +112,20 @@ class OrganizationResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def populate_flat_fields(self) -> "OrganizationResponse":
+        # Map from financial_details if top-level is empty
+        if not self.gst_number and self.financial_details:
+            self.gst_number = self.financial_details.tax_id_encrypted
+        
+        # Map from first certificate if top-level is empty
+        if not self.business_license and self.verification_certificates:
+            self.business_license = self.verification_certificates[0].certificate_number
+            
+        # Map from 'about' for annual_turnover
+        if not self.annual_turnover:
+            self.annual_turnover = self.about
+            
+        return self
+

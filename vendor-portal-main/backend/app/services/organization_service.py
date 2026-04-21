@@ -28,9 +28,43 @@ class OrganizationService:
 
     def update(self, org_id: int, data: OrganizationUpdate) -> Organization:
         org = self.get_by_id(org_id)
-        for field, value in data.model_dump(exclude_none=True).items():
+        update_data = data.model_dump(exclude_none=True)
+        
+        # Handle special field mappings
+        if "annual_turnover" in update_data:
+            org.about = update_data.pop("annual_turnover")
+            
+        if "gst_number" in update_data:
+            gst = update_data.pop("gst_number")
+            if org.financial_details:
+                org.financial_details.tax_id_encrypted = gst
+            else:
+                from app.models.organization import ManufacturerFinancialDetails
+                org.financial_details = ManufacturerFinancialDetails(
+                    org_id=org.id, tax_id_encrypted=gst, currency="USD"
+                )
+                self.db.add(org.financial_details)
+                
+        if "business_license" in update_data:
+            license_no = update_data.pop("business_license")
+            if org.verification_certificates:
+                org.verification_certificates[0].certificate_number = license_no
+            else:
+                from app.models.organization import BusinessVerificationCertificate
+                from datetime import date
+                cert = BusinessVerificationCertificate(
+                    org_id=org.id, certificate_number=license_no,
+                    issued_by="Self-Submitted", issued_date=date.today(),
+                    verification_status=VerifyStatusEnum.pending
+                )
+                org.verification_certificates.append(cert)
+                self.db.add(cert)
+
+        for field, value in update_data.items():
             setattr(org, field, value)
+            
         return self.repo.update(org)
+
 
     def update_verification_status(
         self, org_id: int, frontend_status: str, admin_id: int
@@ -77,6 +111,9 @@ class OrganizationService:
             Organization.verification_status != VerifyStatusEnum.pending
         ).order_by(Organization.updated_at.desc()).all()
 
+        from app.schemas.organization import OrganizationResponse
+        from app.core.config import settings
+
         results = []
         for org in orgs:
             # Find latest verification log for this org
@@ -88,15 +125,21 @@ class OrganizationService:
                     AuditLog.action.in_(["verified", "rejected"])
                 ).order_by(desc(AuditLog.changed_at)).first()
             
-            org_data = {
-                "id": org.id,
-                "name": org.name,
-                "email": org.email,
-                "org_type": org.org_type.value,
-                "verification_status": org.verification_status.value,
-                "reviewed_by_admin_name": log[1] if log else "Unknown",
-                "reviewed_at": log[0].changed_at.isoformat() if log else org.updated_at.isoformat()
-            }
+            # Format URLs consistently with pending applications
+            if hasattr(org, "verification_certificates") and org.verification_certificates:
+                for cert in org.verification_certificates:
+                    if cert.document_url and not str(cert.document_url).startswith("http"):
+                        cert.document_url = f"{settings.BASE_URL}/uploads/{cert.document_url}"
+            
+            try:
+                org_data = OrganizationResponse.model_validate(org).model_dump(mode="json")
+            except Exception:
+                # Fallback to standard model_dump if mode="json" is not supported (e.g. older Pydantic)
+                org_data = OrganizationResponse.model_validate(org).dict()
+                
+            org_data["reviewed_by_admin_name"] = log[1] if log else "Unknown"
+            org_data["reviewed_at"] = log[0].changed_at.isoformat() if log else org.updated_at.isoformat()
+            
             results.append(org_data)
         
         return results

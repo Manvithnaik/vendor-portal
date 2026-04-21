@@ -209,7 +209,7 @@ const VendorOrders = () => {
                 {orders.map(o => (
                   <tr key={o.id} className="hover:bg-surface-50 transition-colors">
                     <td className="px-5 py-3 font-mono text-xs text-brand-500">{o.order_number}</td>
-                    <td className="px-5 py-3 font-medium text-brand-800">Org #{o.customer_org_id}</td>
+                    <td className="px-5 py-3 font-medium text-brand-800">{o.customer_name || `Org #${o.customer_org_id}`}</td>
                     <td className="px-5 py-3 text-brand-600">
                       {o.currency} {parseFloat(o.total_amount || 0).toLocaleString()}
                     </td>
@@ -406,9 +406,9 @@ const VendorOrders = () => {
             
             {viewRFQ.org && (
               <div>
-                <p className="font-semibold text-brand-900 border-b pb-1 mb-2 mt-4">Manufacturer Details</p>
+                <p className="font-semibold text-brand-900 border-b pb-1 mb-2 mt-4 text-purple-700">Manufacturer (Buyer) Details</p>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
-                  <div><dt className="text-brand-400">Manufacturer Name</dt><dd className="font-medium text-brand-800">{viewRFQ.org.name || '—'}</dd></div>
+                  <div><dt className="text-brand-400">Manufacturer Name</dt><dd className="font-medium text-brand-800">{viewRFQ.org_name || viewRFQ.org?.name || '—'}</dd></div>
                   <div><dt className="text-brand-400">Contact Name</dt><dd className="font-medium text-brand-800">{viewRFQ.org.contact_name || '—'}</dd></div>
                   <div><dt className="text-brand-400">Contact Email</dt><dd className="font-medium text-brand-800">{viewRFQ.org.contact_email || '—'}</dd></div>
                   <div><dt className="text-brand-400">Contact Phone</dt><dd className="font-medium text-brand-800">{viewRFQ.org.contact_phone || '—'}</dd></div>
@@ -442,15 +442,15 @@ const VendorOrders = () => {
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
               {[
                 ['Order #',     viewOrder.order_number],
-                ['Customer Org', `Org #${viewOrder.customer_org_id}`],
+                ['Manufacturer', viewOrder.customer_name || `Org #${viewOrder.customer_org_id}`],
                 ['Amount',      `${viewOrder.currency} ${parseFloat(viewOrder.total_amount || 0).toLocaleString()}`],
                 ['Status',      viewOrder.status],
                 ['Priority',    viewOrder.priority],
                 ['Date',        viewOrder.created_at ? new Date(viewOrder.created_at).toLocaleDateString() : '—'],
-              ].map(([label, val]) => (
+              ].filter(([_, val]) => val && val !== '—').map(([label, val]) => (
                 <div key={label}>
                   <dt className="text-brand-400">{label}</dt>
-                  <dd className="font-medium text-brand-800">{val || '—'}</dd>
+                  <dd className="font-medium text-brand-800">{val}</dd>
                 </div>
               ))}
               {viewOrder.delivery_address && (
@@ -479,20 +479,6 @@ const VendorOrders = () => {
               )}
             </dl>
 
-            {/* PO Document Link */}
-            {viewOrder.po_document_url && (
-              <div className="border-t border-surface-200 pt-4">
-                <p className="text-sm font-semibold text-brand-700 mb-2">Purchase Order Document</p>
-                <a
-                  href={toAbsUrl(viewOrder.po_document_url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 text-sm text-accent-600 hover:text-accent-700 font-medium"
-                >
-                  <ExternalLink size={14} /> View PO Document
-                </a>
-              </div>
-            )}
 
             {/* Action buttons */}
             {(viewOrder.status === 'pending' || viewOrder.status === 'vendor_review') && (
@@ -521,7 +507,7 @@ const VendorOrders = () => {
           <div className="space-y-4">
             <div className="p-3 bg-surface-100 rounded-lg">
               <p className="text-sm font-semibold text-brand-900">{rejectOrder.order_number}</p>
-              <p className="text-xs text-brand-400">From: Org #{rejectOrder.customer_org_id}</p>
+              <p className="text-xs text-brand-400">From: {rejectOrder.customer_name || `Org #${rejectOrder.customer_org_id}`}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-brand-700 mb-1.5">

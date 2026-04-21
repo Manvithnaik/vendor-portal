@@ -24,7 +24,12 @@ const VendorProfile = () => {
     factory_address: '',
     contact_name: '',
     contact_email: '',
-    contact_phone: ''
+    contact_phone: '',
+    signatory_name: '',
+    signatory_phone: '',
+    email: '',
+    org_type: '',
+    annual_turnover: ''
   });
 
   // Password State
@@ -54,7 +59,12 @@ const VendorProfile = () => {
           factory_address: org.factory_address || '',
           contact_name: org.contact_name || user.full_name || '',
           contact_email: org.contact_email || user.email || '',
-          contact_phone: org.contact_phone || user.phone || ''
+          contact_phone: org.contact_phone || user.phone || '',
+          signatory_name: org.authorised_signatory_name || '',
+          signatory_phone: org.authorised_signatory_phone || '',
+          email: org.email || '',
+          org_type: org.org_type || '',
+          annual_turnover: org.about || ''
         });
       }
     } catch (error) {
@@ -194,6 +204,10 @@ const VendorProfile = () => {
                         <label className="block text-xs font-semibold text-brand-600 mb-1 uppercase tracking-wide">Phone Number</label>
                         <input type="tel" name="phone" value={profileData.phone} onChange={handleProfileChange} className="input-field shadow-sm" />
                       </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-brand-600 mb-1 uppercase tracking-wide">Email</label>
+                        <input type="email" name="email" value={profileData.email} onChange={handleProfileChange} className="input-field shadow-sm" disabled />
+                      </div>
                       <div className="sm:col-span-2">
                         <label className="block text-xs font-semibold text-brand-600 mb-1 uppercase tracking-wide">Factory Address</label>
                         <input type="text" name="factory_address" value={profileData.factory_address} onChange={handleProfileChange} className="input-field shadow-sm" />
@@ -273,6 +287,10 @@ const VendorProfile = () => {
                         <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">Phone Number</p>
                         {renderValue(profileData.phone)}
                       </div>
+                      <div className="border-b border-surface-50 pb-2">
+                        <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">Email</p>
+                        {renderValue(profileData.email)}
+                      </div>
                       <div className="sm:col-span-2 border-b border-surface-50 pb-2">
                         <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">Factory Address</p>
                         {renderValue(profileData.factory_address)}
@@ -312,8 +330,12 @@ const VendorProfile = () => {
                         {renderValue(profileData.city)}
                       </div>
                       <div className="border-b border-surface-50 pb-2">
-                        <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">State & Country</p>
-                        {renderValue(profileData.state && profileData.country ? `${profileData.state}, ${profileData.country}` : (profileData.state || profileData.country || ''))}
+                        <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">State</p>
+                        {renderValue(profileData.state)}
+                      </div>
+                      <div className="border-b border-surface-50 pb-2">
+                        <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">Country</p>
+                        {renderValue(profileData.country)}
                       </div>
                       <div className="border-b border-surface-50 pb-2">
                         <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">Postal Code</p>

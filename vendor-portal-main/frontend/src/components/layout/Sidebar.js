@@ -15,7 +15,7 @@ const navItems = {
   admin: [
     { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
     { to: '/admin/vendor-apps', icon: FileText, label: 'Vendor Applications' },
-    { to: '/admin/manufacturer-apps', icon: FileText, label: 'Manufacturer Apps' },
+    { to: '/admin/manufacturer-apps', icon: FileText, label: 'Manufacturer Applications' },
     { to: '/admin/manage-admins', icon: ShieldCheck, label: 'Admin Management' },
   ],
   vendor: [
@@ -24,7 +24,6 @@ const navItems = {
     { to: '/vendor/orders', icon: ShoppingCart, label: 'Orders & RFQs' },
     { to: '/vendor/shipping', icon: Truck, label: 'Shipping' },
     { to: '/vendor/returns', icon: RotateCcw, label: 'Returns & Disputes' },
-    { to: '/vendor/applications', icon: FileText, label: 'Applications' },
   ],
   manufacturer: [
     { to: '/manufacturer', icon: LayoutDashboard, label: 'Dashboard', end: true },
@@ -33,7 +32,6 @@ const navItems = {
     { to: '/manufacturer/orders', icon: ShoppingCart, label: 'Purchase Orders' },
     { to: '/manufacturer/tracking', icon: Truck, label: 'Order Tracking' },
     { to: '/manufacturer/returns', icon: RotateCcw, label: 'Returns & Disputes' },
-    { to: '/manufacturer/applications', icon: FileText, label: 'Applications' },
   ],
 };
 
@@ -131,16 +129,16 @@ const Sidebar = ({ role }) => {
   };
 
   const linkClasses = ({ isActive }) =>
-    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
       isActive
         ? 'bg-brand-800 text-white shadow-sm'
         : 'text-brand-400 hover:text-brand-800 hover:bg-brand-50'
     }`;
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Logo */}
-      <div className="flex items-center gap-2.5 px-4 py-5 border-b border-surface-200">
+      <div className="flex items-center gap-2.5 px-4 py-4 border-b border-surface-200">
         <div className="w-8 h-8 rounded-lg bg-brand-800 flex items-center justify-center">
           <span className="text-white font-display font-bold text-sm">V</span>
         </div>
@@ -148,7 +146,7 @@ const Sidebar = ({ role }) => {
       </div>
 
       {/* Nav links */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-3 py-2 flex flex-col gap-0.5 overflow-y-auto">
         {visibleItems.map(item => (
           <NavLink
             key={item.to}
@@ -172,7 +170,7 @@ const Sidebar = ({ role }) => {
       </nav>
 
       {/* User & logout */}
-      <div className="px-3 py-4 border-t border-surface-200 space-y-2">
+      <div className="mt-auto px-3 py-3 border-t border-surface-200 space-y-1">
         {user && role !== 'admin' && (
           <NavLink
             to={`/${role}/profile`}
@@ -218,7 +216,7 @@ const Sidebar = ({ role }) => {
       )}
 
       {/* Mobile sidebar */}
-      <aside className={`lg:hidden fixed top-0 left-0 h-full w-64 bg-white border-r border-surface-300 z-50 transform transition-transform ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`lg:hidden fixed top-0 left-0 h-full w-64 bg-white border-r border-surface-300 z-50 transform transition-transform flex flex-col ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <SidebarContent />
       </aside>
 

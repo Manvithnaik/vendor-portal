@@ -3,6 +3,7 @@ Authentication service — handles registration and login for both
 portal users (users table) and platform admins (admins table).
 """
 from datetime import datetime
+from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, verify_password, create_access_token
@@ -63,7 +64,9 @@ class AuthService:
 
         try:
             from app.services.id_generator import IdGeneratorService
+            print(f"DEBUG: Registering with role: {data.role}")
             org_code = IdGeneratorService.generate_sequence_code(self.db, data.role)
+            print(f"DEBUG: Generated org_code: {org_code}")
 
             # 1. Create Organization
             org = Organization(
@@ -80,11 +83,43 @@ class AuthService:
                 website=data.website,
                 business_doc=data.business_doc,
                 business_doc_data=data.business_doc_data,
+                industry_type=data.industry_type,
+                factory_address=data.factory_address,
+                contact_name=data.contact_name,
+                contact_email=data.contact_email,
+                contact_phone=data.contact_phone,
+                authorised_signatory_name=data.signatory_name,
+                authorised_signatory_phone=data.signatory_phone,
+                about=data.annual_turnover,  # Store turnover in 'about' field
                 verification_status=VerifyStatusEnum.pending,
                 is_active=True,
             )
             self.db.add(org)
             self.db.flush()  # get org.id before committing
+
+            # 1.1 Create specialized details if provided
+            if data.gst_number:
+                from app.models.organization import ManufacturerFinancialDetails
+                fin = ManufacturerFinancialDetails(
+                    org_id=org.id,
+                    tax_id_encrypted=data.gst_number,
+                    currency="USD"
+                )
+                org.financial_details = fin
+            
+            if data.business_license:
+                from app.models.organization import BusinessVerificationCertificate
+                from datetime import date
+                cert = BusinessVerificationCertificate(
+                    org_id=org.id,
+                    certificate_number=data.business_license,
+                    issued_by="Self-Submitted",
+                    issued_date=date.today(),
+                    verification_status=VerifyStatusEnum.pending
+                )
+                org.verification_certificates.append(cert)
+                self.db.add(cert)
+
 
             # 2. Resolve or create a default role for this org_type
             role_org_type = (
@@ -149,6 +184,47 @@ class AuthService:
             org.country = data.country
             org.postal_code = data.postal_code
             org.website = data.website
+            org.industry_type = data.industry_type
+            org.factory_address = data.factory_address
+            org.about = data.annual_turnover  # Store turnover in 'about'
+            
+            # Handle manufacturer extras if provided
+            if data.gst_number:
+                from app.models.organization import ManufacturerFinancialDetails
+                # Update existing or create new
+                if org.financial_details:
+                    org.financial_details.tax_id_encrypted = data.gst_number
+                else:
+                    fin = ManufacturerFinancialDetails(
+                        org_id=org.id,
+                        tax_id_encrypted=data.gst_number,
+                        currency="USD"
+                    )
+                    org.financial_details = fin
+                    self.db.add(fin)
+            
+            if data.business_license:
+                from app.models.organization import BusinessVerificationCertificate
+                from datetime import date
+                # Use existing cert or create new
+                if org.verification_certificates:
+                    org.verification_certificates[0].certificate_number = data.business_license
+                else:
+                    cert = BusinessVerificationCertificate(
+                        org_id=org.id,
+                        certificate_number=data.business_license,
+                        issued_by="Self-Submitted",
+                        issued_date=date.today(),
+                        verification_status=VerifyStatusEnum.pending
+                    )
+                    org.verification_certificates.append(cert)
+                    self.db.add(cert)
+            org.contact_name = data.contact_name
+            org.contact_email = data.contact_email
+            org.contact_phone = data.contact_phone
+            org.authorised_signatory_name = data.signatory_name
+            org.authorised_signatory_phone = data.signatory_phone
+            org.about = data.annual_turnover
             org.verification_status = VerifyStatusEnum.pending
             org.updated_at = datetime.utcnow()
 
@@ -187,28 +263,26 @@ class AuthService:
     # Login — Portal Users
     # ------------------------------------------------------------------
     def login(self, data: LoginRequest) -> dict:
-        # First check if the user is an admin
+        """
+        Authenticate a user or admin and return a JWT.
+        """
+        # 1. Check if user is an admin first
         admin = self.admin_repo.get_by_email(data.email)
-        if admin:
-            if not verify_password(data.password, admin.password_hash):
-                raise UnauthorizedException("Invalid email or password.")
-
-            if not admin.is_active or admin.status != "active":
-                raise UnauthorizedException("Admin account is inactive or suspended.")
-
-            admin.last_login_at = datetime.utcnow()
-            self.db.commit()
-
+        if admin and verify_password(data.password, admin.password_hash):
+            if not admin.is_active:
+                raise UnauthorizedException("Admin account is deactivated.")
+            
             token = create_access_token(
                 subject=admin.id,
-                extra_claims={"role": admin.role, "type": "admin"},
+                extra_claims={
+                    "role": admin.role,
+                    "access_level": admin.access_level,
+                    "type": "admin"
+                }
             )
-
             return {
                 "access_token": token,
                 "token_type": "bearer",
-                "admin_id": admin.id,
-                "user_id": admin.id,
                 "role": admin.role,
                 "access_level": admin.access_level,
                 "name": admin.name,
@@ -240,13 +314,6 @@ class AuthService:
         # Map org type to frontend role
         role = map_org_type_to_role(org.org_type) if org else "vendor"
 
-        # Update last_login in background — don't block the login response
-        try:
-            user.last_login = datetime.utcnow()
-            self.db.commit()
-        except Exception:
-            self.db.rollback()
-
         token = create_access_token(
             subject=user.id,
             extra_claims={
@@ -260,9 +327,8 @@ class AuthService:
         return {
             "access_token": token,
             "token_type": "bearer",
-            "user_id": user.id,
-            "org_id": user.org_id,
             "role": role,
+            "org_id": user.org_id,
             "org_type": org.org_type.value if org else None,
             "full_name": f"{user.first_name} {user.last_name}",
             "email": user.email,
@@ -281,13 +347,6 @@ class AuthService:
 
         # Determine if this is the first login (before updating)
         must_change = (admin.last_login_at is None)
-
-        # Update last_login — non-blocking best-effort
-        try:
-            admin.last_login_at = datetime.utcnow()
-            self.db.commit()
-        except Exception:
-            self.db.rollback()
 
         token = create_access_token(
             subject=admin.id,

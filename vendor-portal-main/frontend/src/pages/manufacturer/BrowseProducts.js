@@ -38,7 +38,7 @@ const BrowseProducts = () => {
 
   const filtered = products.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
-    (p.vendorName || '').toLowerCase().includes(search.toLowerCase()) ||
+    (p.vendor_name || '').toLowerCase().includes(search.toLowerCase()) ||
     (p.description || '').toLowerCase().includes(search.toLowerCase())
   );
 
@@ -136,7 +136,7 @@ const BrowseProducts = () => {
 
                 {/* Info */}
                 <h3 className="font-semibold text-brand-900 mb-1">{p.name}</h3>
-                <p className="text-xs text-brand-400 mb-2">by {p.vendorName || p.vendorEmail}</p>
+                <p className="text-xs text-brand-400 mb-2">by {p.vendor_name || p.vendor_email || 'Vendor details unavailable'}</p>
                 <p className="text-sm text-brand-500 mb-4 line-clamp-2 flex-1">
                   {p.description || 'No description provided.'}
                 </p>
@@ -198,7 +198,7 @@ const BrowseProducts = () => {
               <div className="w-full sm:w-2/3 space-y-4">
                 <div>
                   <h2 className="text-xl font-bold text-brand-900">{selectedProduct.name}</h2>
-                  <p className="text-brand-500 font-medium text-sm">by {selectedProduct.vendorName || selectedProduct.vendorEmail || 'Unknown Vendor'}</p>
+                  <p className="text-brand-500 font-medium text-sm">by {selectedProduct.vendor_name || selectedProduct.vendor_email || 'Vendor details unavailable'}</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 bg-surface-50 p-4 rounded-xl border border-surface-200">
@@ -274,7 +274,7 @@ const BrowseProducts = () => {
               </div>
               <div>
                 <p className="text-sm font-semibold text-brand-900">{rfqProduct.name}</p>
-                <p className="text-xs text-brand-400">Vendor: {rfqProduct.vendorName || rfqProduct.vendorEmail}</p>
+                <p className="text-xs text-brand-400">Vendor: {rfqProduct.vendor_name || rfqProduct.vendor_email || 'Vendor details unavailable'}</p>
               </div>
             </div>
 

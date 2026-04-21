@@ -5,6 +5,7 @@ rfq_broadcast, quotes, po_negotiations, vendor_payouts, disputes, refunds.
 CRM tables (section 10) are also included at the bottom.
 """
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, Date, ForeignKey, Integer,
@@ -167,6 +168,10 @@ class RFQ(Base):
     category = relationship("ProductCategory", foreign_keys=[category_id])
     product = relationship("Product", foreign_keys=[product_id])
     broadcasts = relationship("RFQBroadcast", back_populates="rfq", cascade="all, delete-orphan")
+
+    @property
+    def org_name(self) -> Optional[str]:
+        return self.org.name if self.org else None
     quotes = relationship("Quote", back_populates="rfq", cascade="all, delete-orphan")
 
 
@@ -214,6 +219,10 @@ class Quote(Base):
 
     rfq = relationship("RFQ", back_populates="quotes")
     manufacturer_org = relationship("Organization", foreign_keys=[manufacturer_org_id])
+
+    @property
+    def manufacturer_org_name(self) -> Optional[str]:
+        return self.manufacturer_org.name if self.manufacturer_org else None
 
 
 # ---------------------------------------------------------------------------

@@ -217,6 +217,24 @@ const VendorApplications = () => {
     return s;
   };
 
+  const formatLocation = (city, country) => {
+    if (city && country) return `${city}, ${country}`;
+    if (city) return city;
+    if (country) return country;
+    return '—';
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '—';
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+
   return (
     <div className="space-y-6 animate-fade-in">
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
@@ -254,14 +272,14 @@ const VendorApplications = () => {
                         <p className="text-xs text-brand-400 flex items-center gap-1"><Mail size={12} />{app.email}</p>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-brand-500">{app.city || '—'}, {app.country || '—'}</td>
+                    <td className="px-6 py-4 text-brand-500">{formatLocation(app.city, app.country)}</td>
                     <td className="px-6 py-4">
                       <StatusBadge status={statusLabel(app.verification_status)} />
                     </td>
                     <td className="px-6 py-4 text-brand-400">
                       <div className="flex items-center gap-1.5">
                         <Calendar size={14} />
-                        {app.created_at ? new Date(app.created_at).toLocaleDateString() : '—'}
+                        {formatDate(app.created_at)}
                       </div>
                     </td>
                     <td className="px-6 py-4">

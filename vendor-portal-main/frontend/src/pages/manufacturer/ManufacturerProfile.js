@@ -24,7 +24,14 @@ const ManufacturerProfile = () => {
     factory_address: '',
     contact_name: '',
     contact_email: '',
-    contact_phone: ''
+    contact_phone: '',
+    gst_number: '',
+    business_license: '',
+    signatory_name: '',
+    signatory_phone: '',
+    email: '',
+    org_type: '',
+    annual_turnover: ''
   });
 
   // Password State
@@ -42,6 +49,9 @@ const ManufacturerProfile = () => {
       const response = await apiClient.get(`/organizations/${user.org_id}`);
       if (response && response.data) {
         const org = response.data;
+        const cert = org.verification_certificates?.[0] || {};
+        const fin = org.financial_details || {};
+
         setProfileData({
           name: org.name || '',
           phone: org.phone || '',
@@ -54,8 +64,16 @@ const ManufacturerProfile = () => {
           factory_address: org.factory_address || '',
           contact_name: org.contact_name || user.full_name || '',
           contact_email: org.contact_email || user.email || '',
-          contact_phone: org.contact_phone || user.phone || ''
+          contact_phone: org.contact_phone || user.phone || '',
+          gst_number: org.gst_number || '',
+          business_license: org.business_license || '',
+          signatory_name: org.authorised_signatory_name || '',
+          signatory_phone: org.authorised_signatory_phone || '',
+          email: org.email || '',
+          org_type: org.org_type || '',
+          annual_turnover: org.annual_turnover || ''
         });
+
       }
     } catch (error) {
       setToast({ message: 'Failed to load organization details.', type: 'error' });
@@ -194,6 +212,10 @@ const ManufacturerProfile = () => {
                         <label className="block text-xs font-semibold text-brand-600 mb-1 uppercase tracking-wide">Phone Number</label>
                         <input type="tel" name="phone" value={profileData.phone} onChange={handleProfileChange} className="input-field shadow-sm" />
                       </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-brand-600 mb-1 uppercase tracking-wide">Email</label>
+                        <input type="email" name="email" value={profileData.email} onChange={handleProfileChange} className="input-field shadow-sm" disabled />
+                      </div>
                       <div className="sm:col-span-2">
                         <label className="block text-xs font-semibold text-brand-600 mb-1 uppercase tracking-wide">Factory Address</label>
                         <input type="text" name="factory_address" value={profileData.factory_address} onChange={handleProfileChange} className="input-field shadow-sm" />
@@ -215,6 +237,20 @@ const ManufacturerProfile = () => {
                       <div>
                         <label className="block text-xs font-semibold text-brand-600 mb-1 uppercase tracking-wide">Contact Phone</label>
                         <input type="tel" name="contact_phone" value={profileData.contact_phone} onChange={handleProfileChange} className="input-field shadow-sm" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-surface-50 p-5 rounded-xl border border-surface-200 border-l-4 border-l-purple-500">
+                    <h3 className="font-semibold text-brand-900 mb-4 flex items-center gap-2"><CheckCircle size={16}/> Authorized Signatory</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-brand-600 mb-1 uppercase tracking-wide">Signatory Name</label>
+                        <input type="text" name="signatory_name" value={profileData.signatory_name} onChange={handleProfileChange} className="input-field shadow-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-brand-600 mb-1 uppercase tracking-wide">Signatory Phone</label>
+                        <input type="tel" name="signatory_phone" value={profileData.signatory_phone} onChange={handleProfileChange} className="input-field shadow-sm" />
                       </div>
                     </div>
                   </div>
@@ -273,6 +309,10 @@ const ManufacturerProfile = () => {
                         <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">Phone Number</p>
                         {renderValue(profileData.phone)}
                       </div>
+                      <div className="border-b border-surface-50 pb-2">
+                        <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">Email</p>
+                        {renderValue(profileData.email)}
+                      </div>
                       <div className="sm:col-span-2 border-b border-surface-50 pb-2">
                         <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">Factory Address</p>
                         {renderValue(profileData.factory_address)}
@@ -299,6 +339,21 @@ const ManufacturerProfile = () => {
                     </div>
                   </div>
 
+                  {/* Authorized Signatory Section */}
+                  <div className="bg-white p-5 rounded-xl border border-surface-200 border-l-4 border-l-purple-500 shadow-sm">
+                    <h3 className="font-semibold text-brand-900 mb-4 flex items-center gap-2 border-b border-surface-100 pb-2"><CheckCircle size={18} className="text-purple-600"/> Authorized Signatory</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-8">
+                      <div className="border-b border-surface-50 pb-2">
+                        <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">Signatory Name</p>
+                        {renderValue(profileData.signatory_name)}
+                      </div>
+                      <div className="border-b border-surface-50 pb-2">
+                        <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">Signatory Phone</p>
+                        {renderValue(profileData.signatory_phone)}
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Billing Address Section */}
                   <div className="bg-white p-5 rounded-xl border border-surface-200 border-l-4 border-l-indigo-500 shadow-sm">
                     <h3 className="font-semibold text-brand-900 mb-4 flex items-center gap-2 border-b border-surface-100 pb-2"><MapPin size={18} className="text-indigo-600"/> Billing / Main Address</h3>
@@ -312,8 +367,12 @@ const ManufacturerProfile = () => {
                         {renderValue(profileData.city)}
                       </div>
                       <div className="border-b border-surface-50 pb-2">
-                        <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">State & Country</p>
-                        {renderValue(profileData.state && profileData.country ? `${profileData.state}, ${profileData.country}` : (profileData.state || profileData.country || ''))}
+                        <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">State</p>
+                        {renderValue(profileData.state)}
+                      </div>
+                      <div className="border-b border-surface-50 pb-2">
+                        <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">Country</p>
+                        {renderValue(profileData.country)}
                       </div>
                       <div className="border-b border-surface-50 pb-2">
                         <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">Postal Code</p>
@@ -336,15 +395,15 @@ const ManufacturerProfile = () => {
                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="border-b sm:border-b-0 sm:border-r border-surface-100 pb-3 sm:pb-0 sm:pr-4">
                     <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">GST / Tax Number</p>
-                    {renderValue(user.gst_number)}
+                    {renderValue(profileData.gst_number)}
                   </div>
                   <div className="border-b sm:border-b-0 sm:border-r border-surface-100 pb-3 sm:pb-0 sm:px-4">
                     <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">Business License</p>
-                    {renderValue(user.business_license)}
+                    {renderValue(profileData.business_license)}
                   </div>
                   <div className="sm:pl-4">
                     <p className="text-xs uppercase tracking-wider font-semibold text-brand-400 mb-1">Annual Turnover</p>
-                    {renderValue(user.annual_turnover)}
+                    {renderValue(profileData.annual_turnover)}
                   </div>
                </div>
                <div className="mt-5 pt-4 border-t border-surface-100 bg-surface-50 -mx-6 -mb-6 px-6 py-4">

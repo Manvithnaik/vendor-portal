@@ -3,6 +3,7 @@ SQLAlchemy models for schema.sql section 5 — orders, order_items,
 order_status_history.
 """
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, Date, ForeignKey,
@@ -65,6 +66,14 @@ class Order(Base):
     )
     shipments = relationship("Shipment", back_populates="order")
     invoices = relationship("Invoice", back_populates="order")
+
+    @property
+    def vendor_name(self) -> Optional[str]:
+        return self.manufacturer_org.name if self.manufacturer_org else None
+
+    @property
+    def customer_name(self) -> Optional[str]:
+        return self.customer_org.name if self.customer_org else None
 
 
 class OrderItem(Base):

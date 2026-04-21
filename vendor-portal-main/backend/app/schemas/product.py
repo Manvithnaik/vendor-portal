@@ -61,6 +61,10 @@ class ProductResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Vendor info resolved from the related Organization
+    vendor_name: Optional[str] = None
+    vendor_email: Optional[str] = None
+
     model_config = {"from_attributes": True}
 
 

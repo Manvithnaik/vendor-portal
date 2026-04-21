@@ -1,5 +1,5 @@
 from typing import List, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.models.product import Product, ContractProductPricing
 from app.repositories.base import BaseRepository
 
@@ -9,10 +9,25 @@ class ProductRepository(BaseRepository[Product]):
         super().__init__(Product, db)
 
     def get_by_org(self, manufacturer_org_id: int, active_only: bool = True) -> List[Product]:
-        q = self.db.query(Product).filter(Product.manufacturer_org_id == manufacturer_org_id)
+        q = (
+            self.db.query(Product)
+            .options(joinedload(Product.manufacturer_org))
+            .filter(Product.manufacturer_org_id == manufacturer_org_id)
+        )
         if active_only:
             q = q.filter(Product.is_active == True)  # noqa: E712
         return q.all()
+
+    def get_all(self, skip: int = 0, limit: int = 100) -> List[Product]:
+        """Override base get_all to always exclude deactivated (deleted) products."""
+        return (
+            self.db.query(Product)
+            .options(joinedload(Product.manufacturer_org))
+            .filter(Product.is_active == True)  # noqa: E712
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
 
     def get_by_sku(self, manufacturer_org_id: int, sku: str) -> Optional[Product]:
         return (

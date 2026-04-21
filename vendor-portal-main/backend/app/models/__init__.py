@@ -27,4 +27,3 @@ from app.models.vendor_portal import (  # noqa: F401
     CRMInteraction, CRMTask, CRMNote,
 )
 from app.models.email_log import EmailNotificationLog  # noqa: F401
-from app.models.rating import Rating  # noqa: F401
