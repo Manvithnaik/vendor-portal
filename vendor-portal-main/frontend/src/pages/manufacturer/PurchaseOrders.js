@@ -59,7 +59,7 @@ const PurchaseOrders = () => {
                     {getProductSummary(o)}
                   </td>
                   <td className="px-5 py-4 font-mono text-xs text-brand-500">{o.order_number}</td>
-                  <td className="px-5 py-4 font-medium text-brand-800">Org #{o.manufacturer_org_id}</td>
+                  <td className="px-5 py-4 font-medium text-brand-800">{o.customer_org_code || `Org #${o.customer_org_id}`}</td>
                   <td className="px-5 py-4 text-brand-600">
                     {o.currency} {parseFloat(o.total_amount || 0).toLocaleString()}
                   </td>
@@ -92,7 +92,7 @@ const PurchaseOrders = () => {
               {[
                 ['Products',    getProductSummary(viewOrder)],
                 ['Order ID',    viewOrder.order_number],
-                ['Vendor Org',  `Org #${viewOrder.manufacturer_org_id}`],
+                ['Vendor Org',  viewOrder.customer_org_code || `Org #${viewOrder.customer_org_id}`],
                 ['Amount',      `${viewOrder.currency} ${parseFloat(viewOrder.total_amount || 0).toLocaleString()}`],
                 ['Status',      viewOrder.status],
                 ['Priority',    viewOrder.priority],

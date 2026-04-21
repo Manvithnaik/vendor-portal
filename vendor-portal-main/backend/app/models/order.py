@@ -75,6 +75,14 @@ class Order(Base):
     def customer_name(self) -> Optional[str]:
         return self.customer_org.name if self.customer_org else None
 
+    @property
+    def manufacturer_org_code(self) -> Optional[str]:
+        return self.manufacturer_org.org_code if self.manufacturer_org else None
+
+    @property
+    def customer_org_code(self) -> Optional[str]:
+        return self.customer_org.org_code if self.customer_org else None
+
 
 class OrderItem(Base):
     __tablename__ = "order_items"

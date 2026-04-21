@@ -91,6 +91,8 @@ class OrderResponse(BaseModel):
     order_number: str
     customer_org_id: int
     manufacturer_org_id: int
+    manufacturer_org_code: Optional[str] = None
+    customer_org_code: Optional[str] = None
     contract_id: Optional[int] = None
     quotation_id: Optional[int] = None
     po_document_url: Optional[str] = None
@@ -109,7 +111,7 @@ class OrderResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     items: List[OrderItemResponse] = []
-    
+
     vendor_name: Optional[str] = None
     customer_name: Optional[str] = None
 
@@ -119,6 +121,8 @@ class OrderResponse(BaseModel):
     def populate_org_names(self) -> "OrderResponse":
         # Properties in the model now handle vendor_name and customer_name
         return self
+
+
 
     @field_serializer("status")
     def serialize_status(self, status: OrderStatusEnum) -> str:

@@ -10,7 +10,16 @@ class OrderRepository(BaseRepository[Order]):
         super().__init__(Order, db)
 
     def get(self, id: int) -> Optional[Order]:
-        return self.db.query(Order).options(joinedload(Order.items).joinedload(OrderItem.product)).filter(Order.id == id).first()
+        return (
+            self.db.query(Order)
+            .options(
+                joinedload(Order.items).joinedload(OrderItem.product),
+                joinedload(Order.manufacturer_org),
+                joinedload(Order.customer_org),
+            )
+            .filter(Order.id == id)
+            .first()
+        )
 
     def get_by_org(
         self,
@@ -27,12 +36,25 @@ class OrderRepository(BaseRepository[Order]):
         if status:
             q = q.filter(Order.status == status)
         
-        q = q.options(joinedload(Order.items).joinedload(OrderItem.product))
-        
+        q = q.options(
+            joinedload(Order.items).joinedload(OrderItem.product),
+            joinedload(Order.manufacturer_org),
+            joinedload(Order.customer_org),
+        )
+
         return q.order_by(Order.created_at.desc()).offset(skip).limit(limit).all()
 
     def get_by_number(self, order_number: str) -> Optional[Order]:
-        return self.db.query(Order).options(joinedload(Order.items).joinedload(OrderItem.product)).filter(Order.order_number == order_number).first()
+        return (
+            self.db.query(Order)
+            .options(
+                joinedload(Order.items).joinedload(OrderItem.product),
+                joinedload(Order.manufacturer_org),
+                joinedload(Order.customer_org),
+            )
+            .filter(Order.order_number == order_number)
+            .first()
+        )
 
     def get_by_contract(self, contract_id: int) -> List[Order]:
         return self.db.query(Order).filter(Order.contract_id == contract_id).all()

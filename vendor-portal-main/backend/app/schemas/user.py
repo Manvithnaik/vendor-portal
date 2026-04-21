@@ -23,8 +23,9 @@ class UserUpdate(BaseModel):
 
 
 class UserResponse(BaseModel):
-    id: int
-    org_id: int
+    user_id: int       # canonical user PK — use this instead of bare 'id'
+    id: int = 0        # backward-compat alias; prefer user_id
+    org_id: int        # canonical B2B org identifier
     role_id: int
     first_name: str
     last_name: str

@@ -17,18 +17,16 @@ import { toAbsUrl } from '../../utils/url';
 const Tab = ({ active, onClick, icon: Icon, label, count }) => (
   <button
     onClick={onClick}
-    className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-      active
-        ? 'border-brand-800 text-brand-900'
-        : 'border-transparent text-brand-400 hover:text-brand-700'
-    }`}
+    className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${active
+      ? 'border-brand-800 text-brand-900'
+      : 'border-transparent text-brand-400 hover:text-brand-700'
+      }`}
   >
     <Icon size={15} />
     {label}
     {count > 0 && (
-      <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${
-        active ? 'bg-brand-800 text-white' : 'bg-brand-100 text-brand-600'
-      }`}>
+      <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${active ? 'bg-brand-800 text-white' : 'bg-brand-100 text-brand-600'
+        }`}>
         {count}
       </span>
     )}
@@ -39,11 +37,11 @@ const Tab = ({ active, onClick, icon: Icon, label, count }) => (
 // Backend RfqStatusEnum: draft | active | extended | closed | cancelled
 const RFQBadge = ({ status }) => {
   const map = {
-    active:   'bg-yellow-100 text-yellow-800',
+    active: 'bg-yellow-100 text-yellow-800',
     extended: 'bg-blue-100 text-blue-700',
-    draft:    'bg-gray-100 text-gray-500',
-    closed:   'bg-green-100 text-green-700',
-    cancelled:'bg-red-100 text-red-500',
+    draft: 'bg-gray-100 text-gray-500',
+    closed: 'bg-green-100 text-green-700',
+    cancelled: 'bg-red-100 text-red-500',
   };
   const label = { active: 'Open', extended: 'Extended', draft: 'Draft', closed: 'Closed', cancelled: 'Cancelled' };
   return (
@@ -56,21 +54,21 @@ const RFQBadge = ({ status }) => {
 // ── Main Component ───────────────────────────────────────────────────────────
 const VendorOrders = () => {
   const { user } = useAuth();
-  const [tab, setTab]       = useState('orders');
+  const [tab, setTab] = useState('orders');
   const [orders, setOrders] = useState([]);
-  const [rfqs, setRfqs]     = useState([]);
+  const [rfqs, setRfqs] = useState([]);
   const [myQuotes, setMyQuotes] = useState([]);
-  const [toast, setToast]   = useState(null);
+  const [toast, setToast] = useState(null);
 
   // Quote submit modal state (vendor submits price+lead_time to manufacturer RFQ)
-  const [quoteRFQ, setQuoteRFQ]       = useState(null);
-  const [quoteForm, setQuoteForm]     = useState({ price: '', lead_time_days: '', compliance_notes: '', document: null });
-  const [quoteError, setQuoteError]   = useState('');
+  const [quoteRFQ, setQuoteRFQ] = useState(null);
+  const [quoteForm, setQuoteForm] = useState({ price: '', lead_time_days: '', compliance_notes: '', document: null });
+  const [quoteError, setQuoteError] = useState('');
   const [submittingQuote, setSubmittingQuote] = useState(false);
   const [viewRFQ, setViewRFQ] = useState(null);
 
   // PO detail modal
-  const [viewOrder, setViewOrder]     = useState(null);
+  const [viewOrder, setViewOrder] = useState(null);
   // Reject reason modal
   const [rejectOrder, setRejectOrder] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -128,10 +126,10 @@ const VendorOrders = () => {
   const handleQuoteSubmit = async (e) => {
     e.preventDefault();
     const price = parseFloat(quoteForm.price);
-    const lead  = parseInt(quoteForm.lead_time_days, 10);
-    if (!price || price <= 0)    { setQuoteError('Enter a valid price.'); return; }
-    if (!lead  || lead  <= 0)    { setQuoteError('Enter a valid lead time (days).'); return; }
-    if (!quoteForm.document)     { setQuoteError('You must upload a quotation document (PDF).'); return; }
+    const lead = parseInt(quoteForm.lead_time_days, 10);
+    if (!price || price <= 0) { setQuoteError('Enter a valid price.'); return; }
+    if (!lead || lead <= 0) { setQuoteError('Enter a valid lead time (days).'); return; }
+    if (!quoteForm.document) { setQuoteError('You must upload a quotation document (PDF).'); return; }
 
     setSubmittingQuote(true);
     let document_url = '';
@@ -146,11 +144,11 @@ const VendorOrders = () => {
 
     try {
       await quoteService.submitQuote({
-        rfq_id:           quoteRFQ.id,
+        rfq_id: quoteRFQ.id,
         price,
-        lead_time_days:   lead,
+        lead_time_days: lead,
         compliance_notes: quoteForm.compliance_notes || null,
-        document_url:     document_url,
+        document_url: document_url,
       });
       setToast({ message: 'Quotation submitted successfully!', type: 'success' });
       resetQuoteModal();
@@ -166,7 +164,7 @@ const VendorOrders = () => {
   // OrderResponse.status is now serialized via field_serializer to frontend-friendly values,
   // but 'vendor_review' maps to 'pending' in the mapper. Keep both for safety.
   const pendingOrderCount = orders.filter(o => o.status === 'pending' || o.status === 'vendor_review').length;
-  const activeRFQCount    = rfqs.filter(r => r.status === 'active' || r.status === 'extended').length;
+  const activeRFQCount = rfqs.filter(r => r.status === 'active' || r.status === 'extended').length;
 
   useEffect(() => {
     if (tab === 'rfqs') {
@@ -188,7 +186,7 @@ const VendorOrders = () => {
       <div className="card overflow-hidden">
         <div className="flex border-b border-surface-200 overflow-x-auto">
           <Tab active={tab === 'orders'} onClick={() => setTab('orders')} icon={ShoppingCart} label="Purchase Orders" count={pendingOrderCount} />
-          <Tab active={tab === 'rfqs'}   onClick={() => setTab('rfqs')}   icon={FileText}     label="RFQ Requests"   count={activeRFQCount}    />
+          <Tab active={tab === 'rfqs'} onClick={() => setTab('rfqs')} icon={FileText} label="RFQ Requests" count={activeRFQCount} />
         </div>
 
         {/* ── Orders Tab ── */}
@@ -198,7 +196,7 @@ const VendorOrders = () => {
               <thead>
                 <tr className="bg-surface-100 text-brand-600">
                   <th className="text-left px-5 py-3 font-medium">Order #</th>
-                  <th className="text-left px-5 py-3 font-medium">From Org</th>
+                  <th className="text-left px-5 py-3 font-medium">Manufacturer Org</th>
                   <th className="text-left px-5 py-3 font-medium">Amount</th>
                   <th className="text-left px-5 py-3 font-medium">Status</th>
                   <th className="text-left px-5 py-3 font-medium">Date</th>
@@ -209,7 +207,7 @@ const VendorOrders = () => {
                 {orders.map(o => (
                   <tr key={o.id} className="hover:bg-surface-50 transition-colors">
                     <td className="px-5 py-3 font-mono text-xs text-brand-500">{o.order_number}</td>
-                    <td className="px-5 py-3 font-medium text-brand-800">{o.customer_name || `Org #${o.customer_org_id}`}</td>
+                    <td className="px-5 py-3 font-medium text-brand-800">{o.manufacturer_org_code || `Org #${o.manufacturer_org_id}`}</td>
                     <td className="px-5 py-3 text-brand-600">
                       {o.currency} {parseFloat(o.total_amount || 0).toLocaleString()}
                     </td>
@@ -389,48 +387,48 @@ const VendorOrders = () => {
           let rate = '—';
           const match = desc.match(/\[Minimum Expected Rate:\s*(.*?)\]/);
           if (match) {
-              rate = match[1];
-              desc = desc.replace(/\[Minimum Expected Rate:\s*(.*?)\]/, '').trim();
+            rate = match[1];
+            desc = desc.replace(/\[Minimum Expected Rate:\s*(.*?)\]/, '').trim();
           }
           return (
-          <div className="space-y-4 text-sm mt-2">
-            <div>
-              <p className="font-semibold text-brand-900 border-b pb-1 mb-2">Product Details</p>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
-                <div><dt className="text-brand-400">Product Name</dt><dd className="font-medium text-brand-800">{viewRFQ.title || '—'}</dd></div>
-                <div><dt className="text-brand-400">Category</dt><dd className="font-medium text-brand-800">{viewRFQ.category?.name || '—'}</dd></div>
-                <div className="col-span-2"><dt className="text-brand-400">Product Description</dt><dd className="text-brand-700 whitespace-pre-wrap">{viewRFQ.product?.description || '—'}</dd></div>
-                <div className="col-span-2"><dt className="text-brand-400">RFQ Note / Message</dt><dd className="text-brand-700 whitespace-pre-wrap">{desc || '—'}</dd></div>
-              </dl>
-            </div>
-            
-            {viewRFQ.org && (
+            <div className="space-y-4 text-sm mt-2">
               <div>
-                <p className="font-semibold text-brand-900 border-b pb-1 mb-2 mt-4 text-purple-700">Manufacturer (Buyer) Details</p>
+                <p className="font-semibold text-brand-900 border-b pb-1 mb-2">Product Details</p>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
-                  <div><dt className="text-brand-400">Manufacturer Name</dt><dd className="font-medium text-brand-800">{viewRFQ.org_name || viewRFQ.org?.name || '—'}</dd></div>
-                  <div><dt className="text-brand-400">Contact Name</dt><dd className="font-medium text-brand-800">{viewRFQ.org.contact_name || '—'}</dd></div>
-                  <div><dt className="text-brand-400">Contact Email</dt><dd className="font-medium text-brand-800">{viewRFQ.org.contact_email || '—'}</dd></div>
-                  <div><dt className="text-brand-400">Contact Phone</dt><dd className="font-medium text-brand-800">{viewRFQ.org.contact_phone || '—'}</dd></div>
-                  <div className="col-span-2"><dt className="text-brand-400">Address</dt><dd className="font-medium text-brand-800">{(viewRFQ.org.address_line1 || '') + (viewRFQ.org.city ? ', ' + viewRFQ.org.city : '') || '—'}</dd></div>
+                  <div><dt className="text-brand-400">Product Name</dt><dd className="font-medium text-brand-800">{viewRFQ.title || '—'}</dd></div>
+                  <div><dt className="text-brand-400">Category</dt><dd className="font-medium text-brand-800">{viewRFQ.category?.name || '—'}</dd></div>
+                  <div className="col-span-2"><dt className="text-brand-400">Product Description</dt><dd className="text-brand-700 whitespace-pre-wrap">{viewRFQ.product?.description || '—'}</dd></div>
+                  <div className="col-span-2"><dt className="text-brand-400">RFQ Note / Message</dt><dd className="text-brand-700 whitespace-pre-wrap">{desc || '—'}</dd></div>
                 </dl>
               </div>
-            )}
-            
-            <div>
-              <p className="font-semibold text-brand-900 border-b pb-1 mb-2 mt-4">Other RFQ Details</p>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
-                <div><dt className="text-brand-400">Location Filter</dt><dd className="font-medium text-brand-800">{viewRFQ.location_filter || '—'}</dd></div>
-                <div><dt className="text-brand-400">Min. Rate Expected</dt><dd className="font-medium text-brand-800">{rate}</dd></div>
-                <div><dt className="text-brand-400">Priority</dt><dd className="font-medium text-brand-800">{viewRFQ.is_priority ? 'Yes' : 'No'}</dd></div>
-                <div><dt className="text-brand-400">Date Created</dt><dd className="font-medium text-brand-800">{viewRFQ.created_at ? new Date(viewRFQ.created_at).toLocaleDateString() : '—'}</dd></div>
-              </dl>
+
+              {viewRFQ.org && (
+                <div>
+                  <p className="font-semibold text-brand-900 border-b pb-1 mb-2 mt-4 text-purple-700">Manufacturer (Buyer) Details</p>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+                    <div><dt className="text-brand-400">Manufacturer ID</dt><dd className="font-medium text-brand-800">{viewRFQ.org?.org_code || (viewRFQ.org_id ? `Org #${viewRFQ.org_id}` : '—')}</dd></div>
+                    <div><dt className="text-brand-400">Contact Name</dt><dd className="font-medium text-brand-800">{viewRFQ.org.contact_name || '—'}</dd></div>
+                    <div><dt className="text-brand-400">Contact Email</dt><dd className="font-medium text-brand-800">{viewRFQ.org.contact_email || '—'}</dd></div>
+                    <div><dt className="text-brand-400">Contact Phone</dt><dd className="font-medium text-brand-800">{viewRFQ.org.contact_phone || '—'}</dd></div>
+                    <div className="col-span-2"><dt className="text-brand-400">Address</dt><dd className="font-medium text-brand-800">{(viewRFQ.org.address_line1 || '') + (viewRFQ.org.city ? ', ' + viewRFQ.org.city : '') || '—'}</dd></div>
+                  </dl>
+                </div>
+              )}
+
+              <div>
+                <p className="font-semibold text-brand-900 border-b pb-1 mb-2 mt-4">Other RFQ Details</p>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  <div><dt className="text-brand-400">Location Filter</dt><dd className="font-medium text-brand-800">{viewRFQ.location_filter || '—'}</dd></div>
+                  <div><dt className="text-brand-400">Min. Rate Expected</dt><dd className="font-medium text-brand-800">{rate}</dd></div>
+                  <div><dt className="text-brand-400">Priority</dt><dd className="font-medium text-brand-800">{viewRFQ.is_priority ? 'Yes' : 'No'}</dd></div>
+                  <div><dt className="text-brand-400">Date Created</dt><dd className="font-medium text-brand-800">{viewRFQ.created_at ? new Date(viewRFQ.created_at).toLocaleDateString() : '—'}</dd></div>
+                </dl>
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <button onClick={() => setViewRFQ(null)} className="btn-secondary">Close Window</button>
+              </div>
             </div>
-            
-            <div className="flex justify-end pt-4">
-               <button onClick={() => setViewRFQ(null)} className="btn-secondary">Close Window</button>
-            </div>
-          </div>
           );
         })()}
       </Modal>
@@ -441,12 +439,12 @@ const VendorOrders = () => {
           <div className="space-y-4">
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
               {[
-                ['Order #',     viewOrder.order_number],
-                ['Manufacturer', viewOrder.customer_name || `Org #${viewOrder.customer_org_id}`],
-                ['Amount',      `${viewOrder.currency} ${parseFloat(viewOrder.total_amount || 0).toLocaleString()}`],
-                ['Status',      viewOrder.status],
-                ['Priority',    viewOrder.priority],
-                ['Date',        viewOrder.created_at ? new Date(viewOrder.created_at).toLocaleDateString() : '—'],
+                ['Order #', viewOrder.order_number],
+                ['Manufacturer', viewOrder.manufacturer_org_code || `Org #${viewOrder.manufacturer_org_id}`],
+                ['Amount', `${viewOrder.currency} ${parseFloat(viewOrder.total_amount || 0).toLocaleString()}`],
+                ['Status', viewOrder.status],
+                ['Priority', viewOrder.priority],
+                ['Date', viewOrder.created_at ? new Date(viewOrder.created_at).toLocaleDateString() : '—'],
               ].filter(([_, val]) => val && val !== '—').map(([label, val]) => (
                 <div key={label}>
                   <dt className="text-brand-400">{label}</dt>
@@ -507,7 +505,7 @@ const VendorOrders = () => {
           <div className="space-y-4">
             <div className="p-3 bg-surface-100 rounded-lg">
               <p className="text-sm font-semibold text-brand-900">{rejectOrder.order_number}</p>
-              <p className="text-xs text-brand-400">From: {rejectOrder.customer_name || `Org #${rejectOrder.customer_org_id}`}</p>
+              <p className="text-xs text-brand-400">From: {rejectOrder.manufacturer_org_code || `Org #${rejectOrder.manufacturer_org_id}`}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-brand-700 mb-1.5">

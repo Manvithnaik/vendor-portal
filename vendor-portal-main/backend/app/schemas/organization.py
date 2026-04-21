@@ -73,7 +73,8 @@ class OrganizationUpdate(BaseModel):
 
 
 class OrganizationResponse(BaseModel):
-    id: int
+    org_id: int = 0  # canonical B2B identifier — mapped from ORM `id` field
+    id: int          # kept for backward-compat; use org_id in new code
     name: str
     org_type: OrgTypeEnum
     email: str
@@ -115,6 +116,10 @@ class OrganizationResponse(BaseModel):
 
     @model_validator(mode="after")
     def populate_flat_fields(self) -> "OrganizationResponse":
+        # Expose org_id as the canonical B2B organization identifier (mapped from ORM id)
+        if self.org_id == 0 and self.id:
+            self.org_id = self.id
+
         # Map from financial_details if top-level is empty
         if not self.gst_number and self.financial_details:
             self.gst_number = self.financial_details.tax_id_encrypted

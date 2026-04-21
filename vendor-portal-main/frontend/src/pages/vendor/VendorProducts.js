@@ -5,6 +5,7 @@ import { uploadService } from '../../services/uploadService';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
 import { Plus, Edit3, Trash2, Package, ImagePlus, X, AlertCircle } from 'lucide-react';
+import { getFullImageUrl } from '../../utils/imageUtils';
 
 // ── Helper: read File → base64 ───────────────────────────────────────────────
 const readFileAsBase64 = (file) =>
@@ -17,7 +18,7 @@ const readFileAsBase64 = (file) =>
 
 // ── Product card ─────────────────────────────────────────────────────────────
 const ProductCard = ({ p, onEdit, onDelete }) => {
-  const imageUrl = p.specifications?.image || p.image;
+  const imageUrl = getFullImageUrl(p.specifications?.image || p.image);
   return (
   <div className="card overflow-hidden hover:shadow-elevated transition-shadow flex flex-col">
     {/* Image / placeholder */}

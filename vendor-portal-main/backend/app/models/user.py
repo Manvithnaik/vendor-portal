@@ -42,6 +42,11 @@ class User(Base):
         "PasswordResetToken", back_populates="user", cascade="all, delete-orphan"
     )
 
+    @property
+    def user_id(self) -> int:
+        return self.id
+
+
 
 class UserSession(Base):
     __tablename__ = "user_sessions"

@@ -5,6 +5,7 @@ import { rfqService } from '../../services/rfqService';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
 import { Search, Package, FileText, CheckCircle, Clock, ShoppingCart, Eye } from 'lucide-react';
+import { getFullImageUrl } from '../../utils/imageUtils';
 
 const BrowseProducts = () => {
   const { user } = useAuth();
@@ -128,7 +129,7 @@ const BrowseProducts = () => {
                 {/* Product image / icon */}
                 <div className="w-full h-36 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center mb-4 overflow-hidden">
                   {p.specifications?.image || p.image ? (
-                    <img src={p.specifications?.image || p.image} alt={p.name} className="w-full h-full object-cover rounded-lg" />
+                    <img src={getFullImageUrl(p.specifications?.image || p.image)} alt={p.name} className="w-full h-full object-cover rounded-lg" />
                   ) : (
                     <Package size={32} className="text-blue-400" />
                   )}
@@ -187,7 +188,7 @@ const BrowseProducts = () => {
             <div className="flex flex-col sm:flex-row gap-6 items-start">
               <div className="w-full sm:w-1/3 aspect-square rounded-xl bg-gradient-to-br from-blue-50 to-indigo-100 border border-surface-200 flex flex-col items-center justify-center flex-shrink-0 overflow-hidden">
                 {selectedProduct.specifications?.image || selectedProduct.image ? (
-                  <img src={selectedProduct.specifications?.image || selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" />
+                  <img src={getFullImageUrl(selectedProduct.specifications?.image || selectedProduct.image)} alt={selectedProduct.name} className="w-full h-full object-cover" />
                 ) : (
                   <div className="text-center p-4">
                     <Package size={48} className="text-blue-300 mx-auto mb-2" />
@@ -267,7 +268,7 @@ const BrowseProducts = () => {
             <div className="flex items-start gap-3 p-3 bg-surface-100 rounded-lg">
               <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
                 {rfqProduct.specifications?.image || rfqProduct.image ? (
-                  <img src={rfqProduct.specifications?.image || rfqProduct.image} alt={rfqProduct.name} className="w-10 h-10 object-cover rounded-lg" />
+                  <img src={getFullImageUrl(rfqProduct.specifications?.image || rfqProduct.image)} alt={rfqProduct.name} className="w-10 h-10 object-cover rounded-lg" />
                 ) : (
                   <Package size={18} className="text-blue-600" />
                 )}

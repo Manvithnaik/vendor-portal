@@ -40,7 +40,9 @@ def _upload_to_local(file_bytes: bytes, filename: str) -> str:
     filepath = os.path.join(upload_dir, unique_name)
     with open(filepath, "wb") as f:
         f.write(file_bytes)
-    return f"/uploads/{unique_name}"
+    # Return absolute URL so other devices on the network can access the file
+    base = settings.BASE_URL.rstrip("/")
+    return f"{base}/uploads/{unique_name}"
 
 
 @router.post("/po-document", response_model=APIResponse)

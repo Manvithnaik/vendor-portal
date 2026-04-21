@@ -16,18 +16,18 @@ const MAX_EVIDENCE = 2;
 
 const statusColor = {
   'Dispute Raised': 'bg-red-100 text-red-700',
-  'Under Review':   'bg-yellow-100 text-yellow-700',
-  'Accepted':       'bg-green-100 text-green-700',
-  'Rejected':       'bg-red-100 text-red-700',
+  'Under Review': 'bg-yellow-100 text-yellow-700',
+  'Accepted': 'bg-green-100 text-green-700',
+  'Rejected': 'bg-red-100 text-red-700',
   'Return Shipped': 'bg-blue-100 text-blue-700',
   'Dispute Closed': 'bg-surface-200 text-brand-500',
 };
- 
+
 const stepBadge = {
   'Dispute Raised': { label: 'Acknowledge dispute', color: 'text-red-700 font-semibold' },
-  'Under Review':   { label: 'Investigate & Decide', color: 'text-yellow-600 font-semibold' },
-  'Accepted':       { label: 'Waiting for shipping', color: 'text-brand-400' },
-  'Rejected':       { label: 'Action required: Close', color: 'text-red-700 font-semibold underline' },
+  'Under Review': { label: 'Investigate & Decide', color: 'text-yellow-600 font-semibold' },
+  'Accepted': { label: 'Waiting for shipping', color: 'text-brand-400' },
+  'Rejected': { label: 'Action required: Close', color: 'text-red-700 font-semibold underline' },
   'Return Shipped': { label: 'Action required: Close', color: 'text-blue-700 font-semibold underline' },
   'Dispute Closed': { label: 'Dispute Closed', color: 'text-brand-400' },
 };
@@ -36,10 +36,10 @@ const TERMINAL = new Set(['Dispute Closed']);
 
 /* ── Workflow step indicator ─────────────────────────────────────────────── */
 const STEPS = [
-  { key: 'raised',   label: 'Raised',      statuses: ['Dispute Raised'] },
-  { key: 'review',   label: 'Acknowledged', statuses: ['Under Review'] },
-  { key: 'decided',  label: 'Decision',    statuses: ['Accepted', 'Rejected'] },
-  { key: 'resolved', label: 'Resolved',    statuses: ['Return Shipped', 'Dispute Closed'] },
+  { key: 'raised', label: 'Raised', statuses: ['Dispute Raised'] },
+  { key: 'review', label: 'Acknowledged', statuses: ['Under Review'] },
+  { key: 'decided', label: 'Decision', statuses: ['Accepted', 'Rejected'] },
+  { key: 'resolved', label: 'Resolved', statuses: ['Return Shipped', 'Dispute Closed'] },
 ];
 
 function stepIndex(status) {
@@ -57,27 +57,27 @@ const StepIndicator = ({ status }) => {
   return (
     <div className="flex items-center gap-0 mb-5">
       {STEPS.map((step, idx) => {
-        const done         = idx < current || (resolved && idx === 3);
-        const active       = idx === current && !resolved;
-        const isLast       = idx === STEPS.length - 1;
+        const done = idx < current || (resolved && idx === 3);
+        const active = idx === current && !resolved;
+        const isLast = idx === STEPS.length - 1;
         const stepRejected = rejected && idx === 2;
 
         return (
           <React.Fragment key={step.key}>
             <div className="flex flex-col items-center" style={{ flex: '0 0 auto' }}>
               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all
-                ${done         ? 'bg-brand-600 border-brand-600 text-white'
-                : stepRejected ? 'bg-red-500 border-red-500 text-white'
-                : active       ? 'bg-brand-100 border-brand-600 text-brand-700'
-                :                'bg-surface-100 border-surface-300 text-brand-300'}`}
+                ${done ? 'bg-brand-600 border-brand-600 text-white'
+                  : stepRejected ? 'bg-red-500 border-red-500 text-white'
+                    : active ? 'bg-brand-100 border-brand-600 text-brand-700'
+                      : 'bg-surface-100 border-surface-300 text-brand-300'}`}
               >
                 {done || (resolved && idx === 3) ? <CheckCircle2 size={14} /> : stepRejected ? <XCircle size={14} /> : idx + 1}
               </div>
               <span className={`text-[10px] mt-1 text-center font-medium whitespace-nowrap
-                ${done         ? 'text-brand-600'
-                : stepRejected ? 'text-red-500'
-                : active       ? 'text-brand-700'
-                :                'text-brand-300'}`}
+                ${done ? 'text-brand-600'
+                  : stepRejected ? 'text-red-500'
+                    : active ? 'text-brand-700'
+                      : 'text-brand-300'}`}
               >
                 {step.label}
               </span>
@@ -122,15 +122,15 @@ const fmtDate = (iso) => {
 
 /* ── Component ───────────────────────────────────────────────────────────── */
 const VendorReturns = () => {
-  const [disputes, setDisputes]             = useState([]);
-  const [toast, setToast]                   = useState(null);
-  const [selected, setSelected]             = useState(null);
-  const [actionView, setActionView]         = useState('');     // '' | 'accept' | 'reject' | 'evidence'
-  const [comment, setComment]               = useState('');
-  const [evidenceFiles, setEvidenceFiles]   = useState([]);     // [{ file, preview }]
-  const [submitting, setSubmitting]         = useState(false);
-  const [loading, setLoading]               = useState(true);
-  const [openingDetail, setOpeningDetail]   = useState(null); // ID of the dispute being opened
+  const [disputes, setDisputes] = useState([]);
+  const [toast, setToast] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [actionView, setActionView] = useState('');     // '' | 'accept' | 'reject' | 'evidence'
+  const [comment, setComment] = useState('');
+  const [evidenceFiles, setEvidenceFiles] = useState([]);     // [{ file, preview }]
+  const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [openingDetail, setOpeningDetail] = useState(null); // ID of the dispute being opened
 
   const load = async () => {
     try {
@@ -196,11 +196,11 @@ const VendorReturns = () => {
         for (const { file } of evidenceFiles) {
           const fd = new FormData();
           fd.append('file', file);
-          
+
           const uploadRes = await apiClient.post('/uploads/image', fd, {
             headers: { 'Content-Type': 'multipart/form-data' }
           });
-          
+
           if (uploadRes?.data?.file_url) {
             evidence_urls.push(uploadRes.data.file_url);
           } else {
@@ -538,7 +538,7 @@ const VendorReturns = () => {
             )}
 
             {/* Accepted → waiting for manufacturer to ship */}
-                   {/* Return Shipped → vendor can close */}
+            {/* Return Shipped → vendor can close */}
             {selected.status === 'Return Shipped' && (
               <div className="border-t border-surface-200 pt-5 bg-blue-50/60 -mx-6 px-6 pb-6 rounded-b-2xl space-y-3">
                 <div className="flex items-center gap-2 mb-1 px-6">
@@ -557,7 +557,7 @@ const VendorReturns = () => {
                 </div>
               </div>
             )}
- 
+
             {/* Rejected → vendor can close */}
             {selected.status === 'Rejected' && (
               <div className="border-t border-surface-200 pt-5 bg-surface-50 -mx-6 px-6 pb-6 rounded-b-2xl space-y-3">
@@ -579,7 +579,7 @@ const VendorReturns = () => {
                 </div>
               </div>
             )}
- 
+
             {/* Dispute Closed — both sides done */}
             {selected.status === 'Dispute Closed' && (
               <div className="border-t border-surface-200 pt-5 bg-surface-50 -mx-6 px-6 pb-6 rounded-b-2xl">
