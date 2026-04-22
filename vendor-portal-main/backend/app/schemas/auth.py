@@ -108,6 +108,8 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     user_id: int
     org_id: int
+    org_code: Optional[str] = None
+    org_name: Optional[str] = None
     role: str
     org_type: str
     full_name: str

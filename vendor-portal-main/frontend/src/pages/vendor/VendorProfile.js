@@ -144,12 +144,12 @@ const VendorProfile = () => {
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
       
       {/* --- HERO HEADER CARD --- */}
-      <div className="bg-white rounded-2xl shadow-md hover:shadow-lg transition-shadow overflow-hidden">
-        <div className="h-32 bg-gradient-to-r from-purple-600 to-indigo-600 w-full relative"></div>
-        <div className="px-6 pb-6 relative flex flex-col items-center">
-          <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center shadow-lg -mt-12 mb-3 border-4 border-white">
-            <span className="font-display font-bold text-4xl text-purple-700">
-              {(profileData.name || 'V').charAt(0).toUpperCase()}
+      <div className="bg-white rounded-2xl shadow-md hover:shadow-lg transition-shadow" style={{overflow: 'visible'}}>
+        <div className="h-32 bg-gradient-to-r from-purple-600 to-indigo-600 w-full relative rounded-t-2xl"></div>
+        <div className="px-6 pb-6 relative flex flex-col items-center" style={{overflow: 'visible'}}>
+          <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center shadow-lg -mt-12 mb-3 border-4 border-white" style={{zIndex: 1, position: 'relative'}}>
+            <span style={{fontWeight: 700, fontSize: '2.25rem', color: '#6d28d9', fontFamily: 'inherit'}}>
+              {(user.email || 'V').charAt(0).toUpperCase()}
             </span>
           </div>
           <h2 className="font-display font-bold text-3xl text-brand-900 text-center">{profileData.name || 'Organization Name'}</h2>

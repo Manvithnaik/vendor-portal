@@ -55,30 +55,30 @@ const Sidebar = ({ role }) => {
     let interval;
     if (role === 'vendor' && user?.email) {
       const checkRFQs = async () => {
-         try {
-            const rfqRes = await rfqService.listRFQs();
-            const rfqs = Array.isArray(rfqRes?.data) ? rfqRes.data : [];
-            const activeCount = rfqs.filter(r => r.status === 'active' || r.status === 'extended').length;
-            const lastSeen = parseInt(localStorage.getItem(`lastSeenRFQCount_${user.email}`) || '0', 10);
-            if (activeCount > lastSeen) {
-               setHasNewRFQs(true);
-            } else {
-               setHasNewRFQs(false);
-            }
-         } catch (e) {
-            // ignore
-         }
+        try {
+          const rfqRes = await rfqService.listRFQs();
+          const rfqs = Array.isArray(rfqRes?.data) ? rfqRes.data : [];
+          const activeCount = rfqs.filter(r => r.status === 'active' || r.status === 'extended').length;
+          const lastSeen = parseInt(localStorage.getItem(`lastSeenRFQCount_${user.email}`) || '0', 10);
+          if (activeCount > lastSeen) {
+            setHasNewRFQs(true);
+          } else {
+            setHasNewRFQs(false);
+          }
+        } catch (e) {
+          // ignore
+        }
       };
-      
+
       const handleRead = () => setHasNewRFQs(false);
       window.addEventListener('rfqRead', handleRead);
 
       checkRFQs();
       interval = setInterval(checkRFQs, 30000);
-      
+
       return () => {
-         window.removeEventListener('rfqRead', handleRead);
-         clearInterval(interval);
+        window.removeEventListener('rfqRead', handleRead);
+        clearInterval(interval);
       };
     }
   }, [role, user?.email, location.pathname]);
@@ -88,26 +88,26 @@ const Sidebar = ({ role }) => {
     let interval;
     if (role === 'manufacturer' && user?.email) {
       const checkQuotes = async () => {
-         try {
-            const rfqRes = await rfqService.listRFQs();
-            const rfqs = Array.isArray(rfqRes?.data) ? rfqRes.data : [];
-            const activeRFQs = rfqs.filter(r => r.status === 'active' || r.status === 'extended');
-            
-            let totalQuotes = 0;
-            await Promise.all(activeRFQs.map(async (rfq) => {
-               try {
-                  const qRes = await quoteService.listQuotes(rfq.id);
-                  if (qRes && Array.isArray(qRes.data)) {
-                     totalQuotes += qRes.data.length;
-                  }
-               } catch(e) {}
-            }));
-            
-            const lastSeen = parseInt(localStorage.getItem(`lastSeenQuoteCount_${user.email}`) || '0', 10);
-            setHasNewQuotes(totalQuotes > lastSeen);
-         } catch (e) {
-            // ignore
-         }
+        try {
+          const rfqRes = await rfqService.listRFQs();
+          const rfqs = Array.isArray(rfqRes?.data) ? rfqRes.data : [];
+          const activeRFQs = rfqs.filter(r => r.status === 'active' || r.status === 'extended');
+
+          let totalQuotes = 0;
+          await Promise.all(activeRFQs.map(async (rfq) => {
+            try {
+              const qRes = await quoteService.listQuotes(rfq.id);
+              if (qRes && Array.isArray(qRes.data)) {
+                totalQuotes += qRes.data.length;
+              }
+            } catch (e) { }
+          }));
+
+          const lastSeen = parseInt(localStorage.getItem(`lastSeenQuoteCount_${user.email}`) || '0', 10);
+          setHasNewQuotes(totalQuotes > lastSeen);
+        } catch (e) {
+          // ignore
+        }
       };
 
       const handleRead = () => setHasNewQuotes(false);
@@ -117,8 +117,8 @@ const Sidebar = ({ role }) => {
       interval = setInterval(checkQuotes, 40000);
 
       return () => {
-         window.removeEventListener('quoteRead', handleRead);
-         clearInterval(interval);
+        window.removeEventListener('quoteRead', handleRead);
+        clearInterval(interval);
       };
     }
   }, [role, user?.email]);
@@ -129,10 +129,9 @@ const Sidebar = ({ role }) => {
   };
 
   const linkClasses = ({ isActive }) =>
-    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-      isActive
-        ? 'bg-brand-800 text-white shadow-sm'
-        : 'text-brand-400 hover:text-brand-800 hover:bg-brand-50'
+    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${isActive
+      ? 'bg-brand-800 text-white shadow-sm'
+      : 'text-brand-400 hover:text-brand-800 hover:bg-brand-50'
     }`;
 
   const SidebarContent = () => (
@@ -177,11 +176,22 @@ const Sidebar = ({ role }) => {
             className={linkClasses}
             onClick={() => setMobileOpen(false)}
           >
-            <UserCircle size={18} className="flex-shrink-0" />
+            <div style={{
+              width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: role === 'vendor' ? '#4338ca' : '#7e22ce',
+            }}>
+              <span style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', color: '#ffffff', lineHeight: 1 }}>
+                {(user.email || '?')[0]}
+              </span>
+            </div>
             {!collapsed && (
               <div className="flex flex-col text-left overflow-hidden min-w-0 flex-1">
-                <span className="font-medium truncate leading-tight">{user.name || 'Profile'}</span>
-                <span className="text-[11px] truncate opacity-75 font-normal leading-tight mt-0.5">{user.email}</span>
+                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter border self-start mb-1 ${role === 'vendor' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-purple-50 text-purple-700 border-purple-100'
+                  }`}>
+                  {role}
+                </span>
+                <span className="text-[10px] truncate text-brand-400 font-normal leading-tight">{user.email}</span>
               </div>
             )}
           </NavLink>

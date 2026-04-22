@@ -16,6 +16,8 @@ const saveSession = (data) => {
     localStorage.setItem(SESSION_KEY, JSON.stringify({
       role,
       org_id:       data.org_id,
+      org_code:     data.org_code,
+      org_name:     data.org_name,
       org_type:     data.org_type,
       full_name:    data.full_name || data.name,
       email:        data.email,

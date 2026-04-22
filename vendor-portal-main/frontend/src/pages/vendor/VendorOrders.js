@@ -217,6 +217,11 @@ const VendorOrders = () => {
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1.5">
+                        {o.po_document_url && (
+                          <a href={toAbsUrl(o.po_document_url)} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-400 hover:text-brand-700" title="View PO Document">
+                            <FileText size={15} />
+                          </a>
+                        )}
                         <button onClick={() => setViewOrder(o)} className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-400 hover:text-brand-700" title="View Details">
                           <Eye size={15} />
                         </button>
@@ -473,6 +478,23 @@ const VendorOrders = () => {
                 <div className="col-span-2">
                   <dt className="text-brand-400">Rejection Reason</dt>
                   <dd className="font-medium text-red-700">{viewOrder.vendor_response_reason}</dd>
+                </div>
+              )}
+              {viewOrder.po_document_url && (
+                <div className="col-span-2">
+                  <dt className="text-brand-400">PO Document</dt>
+                  <dd className="mt-1">
+                    <a
+                      href={toAbsUrl(viewOrder.po_document_url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-brand-50 text-brand-700 hover:bg-brand-100 transition-colors border border-brand-200 text-xs font-medium"
+                    >
+                      <FileText size={14} />
+                      View PO Document
+                      <ExternalLink size={12} className="opacity-50" />
+                    </a>
+                  </dd>
                 </div>
               )}
             </dl>

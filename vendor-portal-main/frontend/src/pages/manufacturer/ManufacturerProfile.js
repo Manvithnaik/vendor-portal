@@ -157,7 +157,7 @@ const ManufacturerProfile = () => {
         <div className="px-6 pb-6 relative flex flex-col items-center">
           <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center shadow-lg -mt-12 mb-3 border-4 border-white">
             <span className="font-display font-bold text-4xl text-indigo-700">
-              {(profileData.name || 'M').charAt(0).toUpperCase()}
+              {(user.email || 'M').charAt(0).toUpperCase()}
             </span>
           </div>
           <h2 className="font-display font-bold text-3xl text-brand-900 text-center">{profileData.name || 'Organization Name'}</h2>
