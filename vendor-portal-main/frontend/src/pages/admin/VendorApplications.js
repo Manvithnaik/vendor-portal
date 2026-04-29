@@ -235,16 +235,18 @@ const VendorApplications = () => {
                 <th className="text-left px-6 py-4 font-semibold">Organization</th>
                 <th className="text-left px-6 py-4 font-semibold">Location</th>
                 <th className="text-left px-6 py-4 font-semibold">Status</th>
-                <th className="text-left px-6 py-4 font-semibold">Date</th>
+                <th className="text-left px-6 py-4 font-semibold">Submitted On</th>
+                <th className="text-left px-6 py-4 font-semibold">Updated On</th>
+                <th className="text-left px-6 py-4 font-semibold">Review Date</th>
                 <th className="text-left px-6 py-4 font-semibold">Reviewed By</th>
                 <th className="text-right px-6 py-4 font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-200">
               {loading ? (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-brand-300">Loading applications...</td></tr>
+                <tr><td colSpan={8} className="px-6 py-12 text-center text-brand-300">Loading applications...</td></tr>
               ) : apps.length === 0 ? (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-brand-400">No vendor applications found.</td></tr>
+                <tr><td colSpan={8} className="px-6 py-12 text-center text-brand-400">No vendor applications found.</td></tr>
               ) : (
                 apps.map(app => (
                   <tr key={app.id} className="hover:bg-surface-50/50 transition-colors group">
@@ -262,6 +264,18 @@ const VendorApplications = () => {
                       <div className="flex items-center gap-1.5">
                         <Calendar size={14} />
                         {app.created_at ? new Date(app.created_at).toLocaleDateString() : '—'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-brand-400">
+                      <div className="flex items-center gap-1.5">
+                        <Calendar size={14} />
+                        {app.updated_at ? new Date(app.updated_at).toLocaleDateString() : '—'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-brand-400">
+                      <div className="flex items-center gap-1.5">
+                        <Calendar size={14} />
+                        {app.reviewed_at ? new Date(app.reviewed_at).toLocaleDateString() : '—'}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -335,6 +349,18 @@ const VendorApplications = () => {
                   <div className="flex justify-between text-sm">
                     <span className="text-brand-500">Reviewed By</span>
                     <span className="text-brand-900 font-bold">{viewApp.reviewed_by_admin_name || 'Not Reviewed'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-brand-500">Submitted On</span>
+                    <span className="text-brand-900 font-medium">
+                      {viewApp.created_at ? new Date(viewApp.created_at).toLocaleString() : '—'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-brand-500">Updated On</span>
+                    <span className="text-brand-900 font-medium">
+                      {viewApp.updated_at ? new Date(viewApp.updated_at).toLocaleString() : '—'}
+                    </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-brand-500">Review Date</span>

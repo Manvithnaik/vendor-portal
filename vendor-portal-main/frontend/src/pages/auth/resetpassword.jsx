@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { Link, useSearchParams, useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Toast from "../../components/common/Toast";
 
 const ResetPasswordPage = () => {
@@ -9,6 +9,9 @@ const ResetPasswordPage = () => {
     const navigate = useNavigate();
 
     const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [isValidating, setIsValidating] = useState(true);
     const [tokenError, setTokenError] = useState("");
@@ -39,6 +42,12 @@ const ResetPasswordPage = () => {
 
     const handleReset = async (e) => {
         e.preventDefault();
+
+        if (password !== confirmPassword) {
+            setToast({ message: "Passwords do not match. Please try again.", type: "error" });
+            return;
+        }
+
         setLoading(true);
 
         try {
@@ -49,7 +58,7 @@ const ResetPasswordPage = () => {
             });
 
             const data = await res.json();
-            
+
             if (res.ok) {
                 setToast({ message: data.message || "Password successfully changed!", type: "success" });
                 setTimeout(() => navigate('/login'), 2000);
@@ -82,7 +91,7 @@ const ResetPasswordPage = () => {
 
                 <div className="card p-8 shadow-elevated">
                     <h1 className="font-display font-bold text-2xl text-brand-900 mb-1">Set New Password</h1>
-                    
+
                     {isValidating ? (
                         <p className="text-sm text-brand-600 my-6">Validating token...</p>
                     ) : tokenError ? (
@@ -93,20 +102,65 @@ const ResetPasswordPage = () => {
                         <>
                             <p className="text-sm text-brand-400 mb-6">Enter your new strong password below.</p>
                             <form onSubmit={handleReset} className="space-y-4">
+                                {/* New Password Field */}
                                 <div>
                                     <label className="block text-sm font-medium text-brand-700 mb-1.5">New Password</label>
-                                    <input
-                                        type="password"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        className="input-field"
-                                        placeholder="••••••••"
-                                        required
-                                        minLength={8}
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            type={showPassword ? "text" : "password"}
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            className="input-field pr-10"
+                                            placeholder="••••••••"
+                                            required
+                                            minLength={8}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword((prev) => !prev)}
+                                            className="absolute inset-y-0 right-3 flex items-center text-brand-400 hover:text-brand-700 transition-colors"
+                                            tabIndex={-1}
+                                            aria-label={showPassword ? "Hide password" : "Show password"}
+                                        >
+                                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                        </button>
+                                    </div>
                                 </div>
 
-                                <button type="submit" className="btn-primary w-full py-3" disabled={loading}>
+                                {/* Confirm Password Field */}
+                                <div>
+                                    <label className="block text-sm font-medium text-brand-700 mb-1.5">Confirm Password</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showConfirmPassword ? "text" : "password"}
+                                            value={confirmPassword}
+                                            onChange={(e) => setConfirmPassword(e.target.value)}
+                                            className="input-field pr-10"
+                                            placeholder="••••••••"
+                                            required
+                                            minLength={8}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowConfirmPassword((prev) => !prev)}
+                                            className="absolute inset-y-0 right-3 flex items-center text-brand-400 hover:text-brand-700 transition-colors"
+                                            tabIndex={-1}
+                                            aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                                        >
+                                            {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                        </button>
+                                    </div>
+                                    {/* Inline mismatch hint */}
+                                    {confirmPassword && password !== confirmPassword && (
+                                        <p className="mt-1.5 text-xs text-red-500">Passwords do not match.</p>
+                                    )}
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    className="btn-primary w-full py-3"
+                                    disabled={loading}
+                                >
                                     {loading ? "Resetting..." : "Reset Password"}
                                 </button>
                             </form>
@@ -118,4 +172,4 @@ const ResetPasswordPage = () => {
     );
 };
 
-export default ResetPasswordPage;
+export default ResetPasswordPage;
