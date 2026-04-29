@@ -5,7 +5,7 @@ import StatusBadge from '../../components/common/StatusBadge';
 import Toast from '../../components/common/Toast';
 import Modal from '../../components/common/Modal';
 import RatingModal from '../../components/common/RatingModal';
-import { Eye, FileText, ExternalLink, Star } from 'lucide-react';
+import { Eye, FileText, ExternalLink, Star, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toAbsUrl } from '../../utils/url';
 import { getProductSummary } from '../../utils/orderUtils';
 
@@ -16,6 +16,8 @@ const PurchaseOrders = () => {
   const [ratingOrder, setRatingOrder] = useState(null);
   const [ratedOrders, setRatedOrders] = useState(new Set());
   const [toast, setToast]       = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -29,6 +31,9 @@ const PurchaseOrders = () => {
     };
     loadOrders();
   }, []); // eslint-disable-line
+
+  const totalPages = Math.ceil(orders.length / itemsPerPage);
+  const currentOrders = orders.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -53,7 +58,7 @@ const PurchaseOrders = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-200">
-              {orders.map(o => (
+              {currentOrders.map(o => (
                 <tr key={o.id} className="hover:bg-surface-50 transition-colors">
                   <td className="px-5 py-4 font-bold text-brand-900 border-l-[3px] border-transparent hover:border-brand-500">
                     {getProductSummary(o)}
@@ -91,6 +96,34 @@ const PurchaseOrders = () => {
             </tbody>
           </table>
         </div>
+        
+        {/* Pagination Controls */}
+        {orders.length > 0 && (
+          <div className="px-5 py-4 border-t border-surface-200 flex flex-col sm:flex-row items-center justify-between gap-4 bg-surface-50">
+            <span className="text-sm text-brand-500">
+              Showing <span className="font-medium text-brand-900">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium text-brand-900">{Math.min(currentPage * itemsPerPage, orders.length)}</span> of <span className="font-medium text-brand-900">{orders.length}</span> entries
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded-lg border border-surface-200 bg-white text-brand-500 hover:bg-brand-50 hover:text-brand-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Previous Page"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span className="text-sm font-medium text-brand-700 px-3 py-1 bg-surface-200 rounded-md">Page {currentPage} of {totalPages}</span>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded-lg border border-surface-200 bg-white text-brand-500 hover:bg-brand-50 hover:text-brand-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Next Page"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Order Detail Modal */}
