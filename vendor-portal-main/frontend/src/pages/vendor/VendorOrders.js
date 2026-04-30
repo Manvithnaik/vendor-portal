@@ -3,15 +3,14 @@ import { useAuth } from '../../context/AuthContext';
 import { rfqService } from '../../services/rfqService';
 import { quoteService } from '../../services/quoteService';
 import { orderService } from '../../services/orderService';
-import { uploadService } from '../../services/uploadService';
 import StatusBadge from '../../components/common/StatusBadge';
 import Toast from '../../components/common/Toast';
 import Modal from '../../components/common/Modal';
 import {
   CheckCircle, XCircle, FileText, Package,
-  ShoppingCart, Clock, Eye, ExternalLink
+  ShoppingCart, Clock, Eye, ExternalLink,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
-import { toAbsUrl } from '../../utils/url';
 
 // ── Tab button ──────────────────────────────────────────────────────────────
 const Tab = ({ active, onClick, icon: Icon, label, count }) => (
@@ -23,7 +22,7 @@ const Tab = ({ active, onClick, icon: Icon, label, count }) => (
         : 'border-transparent text-brand-400 hover:text-brand-700'
     }`}
   >
-    <Icon size={15} />
+    {Icon && <Icon size={15} />}
     {label}
     {count > 0 && (
       <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${
@@ -59,15 +58,17 @@ const VendorOrders = () => {
   const [tab, setTab]       = useState('orders');
   const [orders, setOrders] = useState([]);
   const [rfqs, setRfqs]     = useState([]);
-  const [myQuotes, setMyQuotes] = useState([]);
   const [toast, setToast]   = useState(null);
 
   // Quote submit modal state (vendor submits price+lead_time to manufacturer RFQ)
   const [quoteRFQ, setQuoteRFQ]       = useState(null);
-  const [quoteForm, setQuoteForm]     = useState({ price: '', lead_time_days: '', compliance_notes: '', document: null });
+  const [quoteForm, setQuoteForm]     = useState({ price: '1500.00', lead_time_days: '7', compliance_notes: 'Standard delivery terms and conditions apply. Quality assurance documents will be provided.' });
   const [quoteError, setQuoteError]   = useState('');
   const [submittingQuote, setSubmittingQuote] = useState(false);
-  const [viewRFQ, setViewRFQ] = useState(null);
+
+  // Pagination state for orders
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
 
   // PO detail modal
   const [viewOrder, setViewOrder]     = useState(null);
@@ -77,14 +78,12 @@ const VendorOrders = () => {
 
   const load = async () => {
     try {
-      const [orderRes, rfqRes, quoteRes] = await Promise.all([
+      const [orderRes, rfqRes] = await Promise.all([
         orderService.listOrders({ as_customer: false }),
         rfqService.listRFQs(),
-        quoteService.myQuotes()
       ]);
       setOrders(Array.isArray(orderRes?.data) ? orderRes.data : []);
       setRfqs(Array.isArray(rfqRes?.data) ? rfqRes.data : []);
-      setMyQuotes(Array.isArray(quoteRes?.data) ? quoteRes.data : []);
     } catch (e) {
       setToast({ message: e.message || 'Failed to load data', type: 'error' });
     }
@@ -121,7 +120,7 @@ const VendorOrders = () => {
   // ── Quote submit (vendor replies to RFQ with price + lead_time) ──────────
   const resetQuoteModal = () => {
     setQuoteRFQ(null);
-    setQuoteForm({ price: '', lead_time_days: '', compliance_notes: '', document: null });
+    setQuoteForm({ price: '1500.00', lead_time_days: '7', compliance_notes: 'Standard delivery terms and conditions apply. Quality assurance documents will be provided.' });
     setQuoteError('');
   };
 
@@ -131,26 +130,14 @@ const VendorOrders = () => {
     const lead  = parseInt(quoteForm.lead_time_days, 10);
     if (!price || price <= 0)    { setQuoteError('Enter a valid price.'); return; }
     if (!lead  || lead  <= 0)    { setQuoteError('Enter a valid lead time (days).'); return; }
-    if (!quoteForm.document)     { setQuoteError('You must upload a quotation document (PDF).'); return; }
 
     setSubmittingQuote(true);
-    let document_url = '';
-    try {
-      const uploadRes = await uploadService.uploadPODocument(quoteForm.document);
-      document_url = uploadRes.file_url;
-    } catch (err) {
-      setQuoteError('Failed to upload document. ' + (err.message || ''));
-      setSubmittingQuote(false);
-      return;
-    }
-
     try {
       await quoteService.submitQuote({
         rfq_id:           quoteRFQ.id,
         price,
         lead_time_days:   lead,
         compliance_notes: quoteForm.compliance_notes || null,
-        document_url:     document_url,
       });
       setToast({ message: 'Quotation submitted successfully!', type: 'success' });
       resetQuoteModal();
@@ -162,18 +149,12 @@ const VendorOrders = () => {
     }
   };
 
-  // Backend sends 'vendor_review' for orders awaiting action;
-  // OrderResponse.status is now serialized via field_serializer to frontend-friendly values,
-  // but 'vendor_review' maps to 'pending' in the mapper. Keep both for safety.
+  // Pagination logic
   const pendingOrderCount = orders.filter(o => o.status === 'pending' || o.status === 'vendor_review').length;
   const activeRFQCount    = rfqs.filter(r => r.status === 'active' || r.status === 'extended').length;
 
-  useEffect(() => {
-    if (tab === 'rfqs') {
-      localStorage.setItem(`lastSeenRFQCount_${user?.email}`, activeRFQCount.toString());
-      window.dispatchEvent(new Event('rfqRead'));
-    }
-  }, [tab, activeRFQCount, user?.email]);
+  const totalPages = Math.ceil(orders.length / itemsPerPage);
+  const paginatedOrders = orders.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -187,8 +168,8 @@ const VendorOrders = () => {
       {/* Tabs */}
       <div className="card overflow-hidden">
         <div className="flex border-b border-surface-200 overflow-x-auto">
-          <Tab active={tab === 'orders'} onClick={() => setTab('orders')} icon={ShoppingCart} label="Purchase Orders" count={pendingOrderCount} />
-          <Tab active={tab === 'rfqs'}   onClick={() => setTab('rfqs')}   icon={FileText}     label="RFQ Requests"   count={activeRFQCount}    />
+          <Tab active={tab === 'orders'} onClick={() => setTab('orders')} label="Purchase Orders" count={pendingOrderCount} />
+          <Tab active={tab === 'rfqs'}   onClick={() => setTab('rfqs')}   label="RFQ Requests"   count={activeRFQCount}    />
         </div>
 
         {/* ── Orders Tab ── */}
@@ -206,12 +187,12 @@ const VendorOrders = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-200">
-                {orders.map(o => (
+                {paginatedOrders.map(o => (
                   <tr key={o.id} className="hover:bg-surface-50 transition-colors">
                     <td className="px-5 py-3 font-mono text-xs text-brand-500">{o.order_number}</td>
                     <td className="px-5 py-3 font-medium text-brand-800">Org #{o.customer_org_id}</td>
                     <td className="px-5 py-3 text-brand-600">
-                      {o.currency} {parseFloat(o.total_amount || 0).toLocaleString()}
+                      $ {parseFloat(o.total_amount || 0).toLocaleString()}
                     </td>
                     <td className="px-5 py-3"><StatusBadge status={o.status} /></td>
                     <td className="px-5 py-3 text-brand-400">
@@ -242,6 +223,36 @@ const VendorOrders = () => {
                 )}
               </tbody>
             </table>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-5 py-4 border-t border-surface-200 bg-surface-50">
+                <p className="text-xs text-brand-400">
+                  Showing <span className="font-medium text-brand-700">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
+                  <span className="font-medium text-brand-700">{Math.min(currentPage * itemsPerPage, orders.length)}</span> of{' '}
+                  <span className="font-medium text-brand-700">{orders.length}</span> orders
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded border border-surface-300 bg-white text-brand-600 hover:bg-surface-100 disabled:opacity-40 transition-colors"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="text-xs font-medium text-brand-700 px-2">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="p-1.5 rounded border border-surface-300 bg-white text-brand-600 hover:bg-surface-100 disabled:opacity-40 transition-colors"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -264,31 +275,32 @@ const VendorOrders = () => {
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-brand-900 truncate">{rfq.title}</p>
                       <p className="text-xs text-brand-400">
-                        RFQ #{rfq.id}
+                        RFQ #{rfq.id} · Deadline: {rfq.deadline ? new Date(rfq.deadline).toLocaleDateString() : '—'}
                         {' · '}
                         {rfq.created_at ? new Date(rfq.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
                       </p>
                       {rfq.description && (
-                        <p className="text-xs text-brand-500 mt-0.5 truncate max-w-xs">{rfq.description.replace(/\[Minimum Expected Rate: .*?\]/, '')}</p>
+                        <p className="text-xs text-brand-500 mt-0.5 truncate max-w-xs">{rfq.description}</p>
                       )}
                     </div>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0 ml-4">
                     <RFQBadge status={rfq.status} />
-                    <button onClick={() => setViewRFQ(rfq)} className="btn-secondary text-xs py-2 px-3">Open</button>
                     {(rfq.status === 'active' || rfq.status === 'extended') ? (
-                      myQuotes.some(q => q.rfq_id === rfq.id) ? (
-                        <button className="btn-secondary text-xs py-2 bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200" disabled>
-                          Quotation Submitted
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => { setQuoteRFQ(rfq); setQuoteForm({ price: '', lead_time_days: '', compliance_notes: '', document: null }); setQuoteError(''); }}
-                          className="btn-accent text-xs py-2"
-                        >
-                          Submit Quotation
-                        </button>
-                      )
+                      <button
+                        onClick={() => { 
+                          setQuoteRFQ(rfq); 
+                          setQuoteForm({ 
+                            price: '1500.00', 
+                            lead_time_days: '7', 
+                            compliance_notes: 'Standard delivery terms and conditions apply. Quality assurance documents will be provided.' 
+                          }); 
+                          setQuoteError(''); 
+                        }}
+                        className="btn-accent text-xs py-2"
+                      >
+                        Submit Quotation
+                      </button>
                     ) : (
                       <div className="flex items-center gap-1.5 text-xs text-green-700 font-medium">
                         <CheckCircle size={13} />
@@ -304,13 +316,19 @@ const VendorOrders = () => {
       </div>
 
       {/* ── Submit Quote Modal ── */}
-      <Modal open={!!quoteRFQ} onClose={resetQuoteModal} title="Submit Quotation" size="lg">
+      <Modal open={!!quoteRFQ} onClose={resetQuoteModal} title="Submit Quotation">
         {quoteRFQ && (
           <form onSubmit={handleQuoteSubmit} className="space-y-4">
-            <div className="p-3 bg-surface-100 rounded-lg">
-              <p className="text-xs text-brand-500 mb-1">RFQ Details</p>
-              <p className="text-sm font-semibold text-brand-900">{quoteRFQ.title}</p>
-              {quoteRFQ.description && <p className="text-xs text-brand-500 mt-1 italic">"{quoteRFQ.description.replace(/\[Minimum Expected Rate: .*?\]/, '')}"</p>}
+            <div className="p-3 bg-surface-100 rounded-lg flex items-start gap-4">
+              <div className="w-16 h-16 rounded-lg bg-white border border-surface-200 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm">
+                <Package size={24} className="text-brand-300" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-brand-500 mb-0.5">RFQ Details</p>
+                <p className="text-sm font-semibold text-brand-900 truncate">{quoteRFQ.title}</p>
+                <p className="text-xs text-brand-400">Deadline: {quoteRFQ.deadline ? new Date(quoteRFQ.deadline).toLocaleDateString() : '—'}</p>
+                {quoteRFQ.description && <p className="text-xs text-brand-500 mt-1 italic line-clamp-2">"{quoteRFQ.description}"</p>}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -319,15 +337,10 @@ const VendorOrders = () => {
                   Price (Total) <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="number" min="0" step="1000" className="input-field"
-                  placeholder="e.g. 50000"
+                  type="number" min="0.01" step="0.01" className="input-field"
+                  placeholder="e.g. 50000.00"
                   value={quoteForm.price}
                   onChange={e => setQuoteForm({ ...quoteForm, price: e.target.value })}
-                  onKeyDown={e => {
-                    if (['e', 'E', '+', '-', '.'].includes(e.key)) {
-                      e.preventDefault();
-                    }
-                  }}
                   required
                 />
               </div>
@@ -355,16 +368,6 @@ const VendorOrders = () => {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-brand-700 mb-1.5">
-                Quotation Document / PDF <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="file" accept="application/pdf" className="input-field p-2"
-                onChange={e => setQuoteForm({ ...quoteForm, document: e.target.files[0] })}
-              />
-            </div>
-
             <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-100 rounded-lg text-xs text-amber-700">
               <Clock size={13} className="mt-0.5 flex-shrink-0" />
               <span>Once submitted, the manufacturer can view your quote and place an order referencing it.</span>
@@ -382,68 +385,15 @@ const VendorOrders = () => {
         )}
       </Modal>
 
-      {/* ── View RFQ Modal ── */}
-      <Modal open={!!viewRFQ} onClose={() => setViewRFQ(null)} title="RFQ Request Details">
-        {viewRFQ && (() => {
-          let desc = viewRFQ.description || '';
-          let rate = '—';
-          const match = desc.match(/\[Minimum Expected Rate:\s*(.*?)\]/);
-          if (match) {
-              rate = match[1];
-              desc = desc.replace(/\[Minimum Expected Rate:\s*(.*?)\]/, '').trim();
-          }
-          return (
-          <div className="space-y-4 text-sm mt-2">
-            <div>
-              <p className="font-semibold text-brand-900 border-b pb-1 mb-2">Product Details</p>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
-                <div><dt className="text-brand-400">Product Name</dt><dd className="font-medium text-brand-800">{viewRFQ.title || '—'}</dd></div>
-                <div><dt className="text-brand-400">Category</dt><dd className="font-medium text-brand-800">{viewRFQ.category?.name || '—'}</dd></div>
-                <div className="col-span-2"><dt className="text-brand-400">Product Description</dt><dd className="text-brand-700 whitespace-pre-wrap">{viewRFQ.product?.description || '—'}</dd></div>
-                <div className="col-span-2"><dt className="text-brand-400">RFQ Note / Message</dt><dd className="text-brand-700 whitespace-pre-wrap">{desc || '—'}</dd></div>
-              </dl>
-            </div>
-            
-            {viewRFQ.org && (
-              <div>
-                <p className="font-semibold text-brand-900 border-b pb-1 mb-2 mt-4">Manufacturer Details</p>
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
-                  <div><dt className="text-brand-400">Manufacturer Name</dt><dd className="font-medium text-brand-800">{viewRFQ.org.name || '—'}</dd></div>
-                  <div><dt className="text-brand-400">Contact Name</dt><dd className="font-medium text-brand-800">{viewRFQ.org.contact_name || '—'}</dd></div>
-                  <div><dt className="text-brand-400">Contact Email</dt><dd className="font-medium text-brand-800">{viewRFQ.org.contact_email || '—'}</dd></div>
-                  <div><dt className="text-brand-400">Contact Phone</dt><dd className="font-medium text-brand-800">{viewRFQ.org.contact_phone || '—'}</dd></div>
-                  <div className="col-span-2"><dt className="text-brand-400">Address</dt><dd className="font-medium text-brand-800">{(viewRFQ.org.address_line1 || '') + (viewRFQ.org.city ? ', ' + viewRFQ.org.city : '') || '—'}</dd></div>
-                </dl>
-              </div>
-            )}
-            
-            <div>
-              <p className="font-semibold text-brand-900 border-b pb-1 mb-2 mt-4">Other RFQ Details</p>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
-                <div><dt className="text-brand-400">Location Filter</dt><dd className="font-medium text-brand-800">{viewRFQ.location_filter || '—'}</dd></div>
-                <div><dt className="text-brand-400">Min. Rate Expected</dt><dd className="font-medium text-brand-800">{rate}</dd></div>
-                <div><dt className="text-brand-400">Priority</dt><dd className="font-medium text-brand-800">{viewRFQ.is_priority ? 'Yes' : 'No'}</dd></div>
-                <div><dt className="text-brand-400">Date Created</dt><dd className="font-medium text-brand-800">{viewRFQ.created_at ? new Date(viewRFQ.created_at).toLocaleDateString() : '—'}</dd></div>
-              </dl>
-            </div>
-            
-            <div className="flex justify-end pt-4">
-               <button onClick={() => setViewRFQ(null)} className="btn-secondary">Close Window</button>
-            </div>
-          </div>
-          );
-        })()}
-      </Modal>
-
       {/* ── PO Detail Modal ── */}
-      <Modal open={!!viewOrder} onClose={() => setViewOrder(null)} title="Purchase Order Details" size="lg">
+      <Modal open={!!viewOrder} onClose={() => setViewOrder(null)} title="Purchase Order Details">
         {viewOrder && (
           <div className="space-y-4">
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
               {[
                 ['Order #',     viewOrder.order_number],
                 ['Customer Org', `Org #${viewOrder.customer_org_id}`],
-                ['Amount',      `${viewOrder.currency} ${parseFloat(viewOrder.total_amount || 0).toLocaleString()}`],
+                ['Amount',      `$ ${parseFloat(viewOrder.total_amount || 0).toLocaleString()}`],
                 ['Status',      viewOrder.status],
                 ['Priority',    viewOrder.priority],
                 ['Date',        viewOrder.created_at ? new Date(viewOrder.created_at).toLocaleDateString() : '—'],
@@ -484,7 +434,7 @@ const VendorOrders = () => {
               <div className="border-t border-surface-200 pt-4">
                 <p className="text-sm font-semibold text-brand-700 mb-2">Purchase Order Document</p>
                 <a
-                  href={toAbsUrl(viewOrder.po_document_url)}
+                  href={viewOrder.po_document_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 text-sm text-accent-600 hover:text-accent-700 font-medium"
