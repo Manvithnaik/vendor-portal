@@ -41,3 +41,18 @@ class UserResponse(BaseModel):
     @property
     def full_name(self) -> str:
         return f"{self.first_name} {self.last_name}"
+
+
+class AdminResponse(BaseModel):
+    id: int
+    name: str
+    email: str
+    role: str
+    access_level: int
+    status: str
+    is_active: bool
+    last_login_at: Optional[datetime] = None
+    created_at: datetime
+    temp_password: Optional[str] = None
+
+    model_config = {"from_attributes": True}

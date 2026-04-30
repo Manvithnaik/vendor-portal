@@ -8,7 +8,8 @@ import Toast from '../../components/common/Toast';
 import Modal from '../../components/common/Modal';
 import {
   CheckCircle, XCircle, FileText, Package,
-  ShoppingCart, Clock, Eye, ExternalLink
+  ShoppingCart, Clock, Eye, ExternalLink,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 // ── Tab button ──────────────────────────────────────────────────────────────
@@ -21,7 +22,7 @@ const Tab = ({ active, onClick, icon: Icon, label, count }) => (
         : 'border-transparent text-brand-400 hover:text-brand-700'
     }`}
   >
-    <Icon size={15} />
+    {Icon && <Icon size={15} />}
     {label}
     {count > 0 && (
       <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${
@@ -61,9 +62,13 @@ const VendorOrders = () => {
 
   // Quote submit modal state (vendor submits price+lead_time to manufacturer RFQ)
   const [quoteRFQ, setQuoteRFQ]       = useState(null);
-  const [quoteForm, setQuoteForm]     = useState({ price: '', lead_time_days: '', compliance_notes: '' });
+  const [quoteForm, setQuoteForm]     = useState({ price: '1500.00', lead_time_days: '7', compliance_notes: 'Standard delivery terms and conditions apply. Quality assurance documents will be provided.' });
   const [quoteError, setQuoteError]   = useState('');
   const [submittingQuote, setSubmittingQuote] = useState(false);
+
+  // Pagination state for orders
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
 
   // PO detail modal
   const [viewOrder, setViewOrder]     = useState(null);
@@ -115,7 +120,7 @@ const VendorOrders = () => {
   // ── Quote submit (vendor replies to RFQ with price + lead_time) ──────────
   const resetQuoteModal = () => {
     setQuoteRFQ(null);
-    setQuoteForm({ price: '', lead_time_days: '', compliance_notes: '' });
+    setQuoteForm({ price: '1500.00', lead_time_days: '7', compliance_notes: 'Standard delivery terms and conditions apply. Quality assurance documents will be provided.' });
     setQuoteError('');
   };
 
@@ -144,11 +149,12 @@ const VendorOrders = () => {
     }
   };
 
-  // Backend sends 'vendor_review' for orders awaiting action;
-  // OrderResponse.status is now serialized via field_serializer to frontend-friendly values,
-  // but 'vendor_review' maps to 'pending' in the mapper. Keep both for safety.
+  // Pagination logic
   const pendingOrderCount = orders.filter(o => o.status === 'pending' || o.status === 'vendor_review').length;
   const activeRFQCount    = rfqs.filter(r => r.status === 'active' || r.status === 'extended').length;
+
+  const totalPages = Math.ceil(orders.length / itemsPerPage);
+  const paginatedOrders = orders.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -162,8 +168,8 @@ const VendorOrders = () => {
       {/* Tabs */}
       <div className="card overflow-hidden">
         <div className="flex border-b border-surface-200 overflow-x-auto">
-          <Tab active={tab === 'orders'} onClick={() => setTab('orders')} icon={ShoppingCart} label="Purchase Orders" count={pendingOrderCount} />
-          <Tab active={tab === 'rfqs'}   onClick={() => setTab('rfqs')}   icon={FileText}     label="RFQ Requests"   count={activeRFQCount}    />
+          <Tab active={tab === 'orders'} onClick={() => setTab('orders')} label="Purchase Orders" count={pendingOrderCount} />
+          <Tab active={tab === 'rfqs'}   onClick={() => setTab('rfqs')}   label="RFQ Requests"   count={activeRFQCount}    />
         </div>
 
         {/* ── Orders Tab ── */}
@@ -181,12 +187,12 @@ const VendorOrders = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-200">
-                {orders.map(o => (
+                {paginatedOrders.map(o => (
                   <tr key={o.id} className="hover:bg-surface-50 transition-colors">
                     <td className="px-5 py-3 font-mono text-xs text-brand-500">{o.order_number}</td>
                     <td className="px-5 py-3 font-medium text-brand-800">Org #{o.customer_org_id}</td>
                     <td className="px-5 py-3 text-brand-600">
-                      {o.currency} {parseFloat(o.total_amount || 0).toLocaleString()}
+                      $ {parseFloat(o.total_amount || 0).toLocaleString()}
                     </td>
                     <td className="px-5 py-3"><StatusBadge status={o.status} /></td>
                     <td className="px-5 py-3 text-brand-400">
@@ -217,6 +223,36 @@ const VendorOrders = () => {
                 )}
               </tbody>
             </table>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-5 py-4 border-t border-surface-200 bg-surface-50">
+                <p className="text-xs text-brand-400">
+                  Showing <span className="font-medium text-brand-700">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
+                  <span className="font-medium text-brand-700">{Math.min(currentPage * itemsPerPage, orders.length)}</span> of{' '}
+                  <span className="font-medium text-brand-700">{orders.length}</span> orders
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded border border-surface-300 bg-white text-brand-600 hover:bg-surface-100 disabled:opacity-40 transition-colors"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="text-xs font-medium text-brand-700 px-2">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="p-1.5 rounded border border-surface-300 bg-white text-brand-600 hover:bg-surface-100 disabled:opacity-40 transition-colors"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -252,7 +288,15 @@ const VendorOrders = () => {
                     <RFQBadge status={rfq.status} />
                     {(rfq.status === 'active' || rfq.status === 'extended') ? (
                       <button
-                        onClick={() => { setQuoteRFQ(rfq); setQuoteForm({ price: '', lead_time_days: '', compliance_notes: '' }); setQuoteError(''); }}
+                        onClick={() => { 
+                          setQuoteRFQ(rfq); 
+                          setQuoteForm({ 
+                            price: '1500.00', 
+                            lead_time_days: '7', 
+                            compliance_notes: 'Standard delivery terms and conditions apply. Quality assurance documents will be provided.' 
+                          }); 
+                          setQuoteError(''); 
+                        }}
                         className="btn-accent text-xs py-2"
                       >
                         Submit Quotation
@@ -275,11 +319,16 @@ const VendorOrders = () => {
       <Modal open={!!quoteRFQ} onClose={resetQuoteModal} title="Submit Quotation">
         {quoteRFQ && (
           <form onSubmit={handleQuoteSubmit} className="space-y-4">
-            <div className="p-3 bg-surface-100 rounded-lg">
-              <p className="text-xs text-brand-500 mb-1">RFQ Details</p>
-              <p className="text-sm font-semibold text-brand-900">{quoteRFQ.title}</p>
-              <p className="text-xs text-brand-400">Deadline: {quoteRFQ.deadline ? new Date(quoteRFQ.deadline).toLocaleDateString() : '—'}</p>
-              {quoteRFQ.description && <p className="text-xs text-brand-500 mt-1 italic">"{quoteRFQ.description}"</p>}
+            <div className="p-3 bg-surface-100 rounded-lg flex items-start gap-4">
+              <div className="w-16 h-16 rounded-lg bg-white border border-surface-200 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm">
+                <Package size={24} className="text-brand-300" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-brand-500 mb-0.5">RFQ Details</p>
+                <p className="text-sm font-semibold text-brand-900 truncate">{quoteRFQ.title}</p>
+                <p className="text-xs text-brand-400">Deadline: {quoteRFQ.deadline ? new Date(quoteRFQ.deadline).toLocaleDateString() : '—'}</p>
+                {quoteRFQ.description && <p className="text-xs text-brand-500 mt-1 italic line-clamp-2">"{quoteRFQ.description}"</p>}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -344,7 +393,7 @@ const VendorOrders = () => {
               {[
                 ['Order #',     viewOrder.order_number],
                 ['Customer Org', `Org #${viewOrder.customer_org_id}`],
-                ['Amount',      `${viewOrder.currency} ${parseFloat(viewOrder.total_amount || 0).toLocaleString()}`],
+                ['Amount',      `$ ${parseFloat(viewOrder.total_amount || 0).toLocaleString()}`],
                 ['Status',      viewOrder.status],
                 ['Priority',    viewOrder.priority],
                 ['Date',        viewOrder.created_at ? new Date(viewOrder.created_at).toLocaleDateString() : '—'],

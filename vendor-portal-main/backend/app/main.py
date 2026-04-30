@@ -21,13 +21,10 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS config — wildcard + credentials is rejected by browsers; use explicit origins
+# CORS config
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=settings.CORS_ORIGINS or ["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -47,10 +44,12 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 try:
     _upload_dir = settings.UPLOAD_DIR
     os.makedirs(_upload_dir, exist_ok=True)
-    app.mount("/uploads/files", StaticFiles(directory=_upload_dir), name="uploads")
+    app.mount("/uploads", StaticFiles(directory=_upload_dir), name="uploads")
 except Exception:  # noqa: BLE001
     pass  # skip static mount if directory unavailable (e.g. fresh container)
 
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the Unified B2B Platform API"}
+
+# Trigger reload

@@ -58,6 +58,7 @@ class Order(Base):
     creator = relationship("User", foreign_keys=[created_by])
     approver = relationship("User", foreign_keys=[approved_by])
     grn_confirmer = relationship("User", foreign_keys=[grn_confirmed_by])
+    quotation = relationship("Quote", foreign_keys=[quotation_id])
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     status_history = relationship(
         "OrderStatusHistory", back_populates="order", cascade="all, delete-orphan"
@@ -86,6 +87,10 @@ class OrderItem(Base):
     order = relationship("Order", back_populates="items")
     product = relationship("Product", back_populates="order_items")
     contract_pricing = relationship("ContractProductPricing", back_populates="order_items")
+
+    @property
+    def product_name(self):
+        return self.product.name if self.product else None
 
 
 class OrderStatusHistory(Base):

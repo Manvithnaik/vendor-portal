@@ -13,7 +13,7 @@ from app.core.config import settings
 def hash_password(plain_password: str) -> str:
     """Return bcrypt hash of the plain-text password."""
     password_bytes = plain_password.encode("utf-8")[:72]   # bcrypt max = 72 bytes
-    salt = _bcrypt.gensalt(rounds=12)
+    salt = _bcrypt.gensalt(rounds=8)
     return _bcrypt.hashpw(password_bytes, salt).decode("utf-8")
 
 
@@ -69,3 +69,25 @@ def decode_access_token(token: str) -> dict:
         JWTError: if the token is invalid or expired.
     """
     return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+
+
+def create_invitation_token(admin_id: int) -> str:
+    """Create a short-lived (24h) token for account setup."""
+    expire = datetime.now(timezone.utc) + timedelta(hours=24)
+    payload = {
+        "sub": str(admin_id),
+        "exp": expire,
+        "type": "admin_invitation"
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def verify_invitation_token(token: str) -> int:
+    """
+    Verify invitation token and return the admin_id.
+    Raises JWTError if invalid.
+    """
+    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    if payload.get("type") != "admin_invitation":
+        raise JWTError("Invalid token type")
+    return int(payload["sub"])
