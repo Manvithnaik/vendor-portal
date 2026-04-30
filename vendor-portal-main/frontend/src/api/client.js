@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
+const BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api/v1';
 
 const apiClient = axios.create({
   baseURL: BASE_URL,
@@ -33,7 +33,7 @@ apiClient.interceptors.response.use(
       // (admin tokens are rejected by get_current_user deps).
       // Don't wipe admin session for those failures — just throw.
       const session = (() => { try { return JSON.parse(localStorage.getItem('vh_session') || '{}'); } catch { return {}; } })();
-      const isAdminSession = session?.role === 'admin' || session?.role === 'superadmin';
+      const isAdminSession = session?.role === 'admin';
 
       if (!isAdminSession) {
         // Regular user token expired — clear session and redirect to login

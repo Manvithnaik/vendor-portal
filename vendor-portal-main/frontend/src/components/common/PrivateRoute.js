@@ -27,9 +27,8 @@ const PrivateRoute = ({ children, requiredRole }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Role guard — allow 'superadmin' access to 'admin' routes
-  const effectiveRole = user.role === 'superadmin' ? 'admin' : user.role;
-  if (requiredRole && effectiveRole !== requiredRole) {
+  // Role guard — null/undefined role always fails the check (no bypass via missing role)
+  if (requiredRole && user.role !== requiredRole) {
     // Redirect to the correct portal root based on actual role
     const roleHome = user.role === 'admin'
       ? '/admin'

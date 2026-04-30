@@ -4,20 +4,21 @@ import apiClient from '../../api/client';
 import { FileText, ShieldCheck, Package, ShoppingCart } from 'lucide-react';
 
 const AdminDashboard = () => {
-  const [stats, setStats] = useState({ vendorPending: 0, vendorTotal: 0, mfgPending: 0, mfgTotal: 0, admins: 0 });
+  const [stats, setStats] = useState({ vendorPending: 0, vendorTotal: 0, mfgPending: 0, mfgTotal: 0, admins: 0, orders: 0 });
 
   useEffect(() => {
     const load = async () => {
       try {
         const orgsRes = await apiClient.get('/organizations/pending-applications');
-        const orgs = orgsRes?.data || [];
+        const orgs    = orgsRes?.data || [];
         const vendors = orgs.filter(o => o.org_type === 'manufacturer');
-        const mfgs = orgs.filter(o => o.org_type === 'customer');
+        const mfgs    = orgs.filter(o => o.org_type === 'customer');
         setStats({
-          vendorTotal: vendors.length,
+          vendorTotal:   vendors.length,
           vendorPending: vendors.filter(o => o.verification_status === 'pending').length,
-          mfgTotal: mfgs.length,
-          mfgPending: mfgs.filter(o => o.verification_status === 'pending').length,
+          mfgTotal:      mfgs.length,
+          mfgPending:    mfgs.filter(o => o.verification_status === 'pending').length,
+          orders: 0,
         });
       } catch { /* show zeros */ }
     };
@@ -25,8 +26,9 @@ const AdminDashboard = () => {
   }, []);
 
   const cards = [
-    { label: 'Vendor Applications', value: stats.vendorTotal, pending: stats.vendorPending, icon: FileText, to: '/admin/vendor-apps', color: 'bg-blue-50 text-blue-600' },
-    { label: 'Manufacturer Apps', value: stats.mfgTotal, pending: stats.mfgPending, icon: FileText, to: '/admin/manufacturer-apps', color: 'bg-emerald-50 text-emerald-600' },
+    { label: 'Vendor Applications', value: stats.vendorTotal, pending: stats.vendorPending, icon: FileText,      to: '/admin/vendor-apps',        color: 'bg-blue-50 text-blue-600' },
+    { label: 'Manufacturer Apps',   value: stats.mfgTotal,    pending: stats.mfgPending,   icon: FileText,      to: '/admin/manufacturer-apps',  color: 'bg-emerald-50 text-emerald-600' },
+    { label: 'Total Orders',        value: stats.orders,                                    icon: ShoppingCart,                                   color: 'bg-orange-50 text-orange-600' },
   ];
 
   return (

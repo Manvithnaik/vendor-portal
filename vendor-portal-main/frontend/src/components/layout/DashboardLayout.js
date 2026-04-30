@@ -13,8 +13,7 @@ const DashboardLayout = ({ role }) => {
   );
 
   if (!user) return <Navigate to="/login" replace />;
-  const effectiveRole = user.role === 'superadmin' ? 'admin' : user.role;
-  if (effectiveRole !== role) return <Navigate to={`/${effectiveRole}`} replace />;
+  if (user.role !== role) return <Navigate to={`/${user.role}`} replace />;
 
   return (
     <div className="flex min-h-screen bg-surface-50">
