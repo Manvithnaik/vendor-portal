@@ -6,8 +6,9 @@ import { orderService } from '../../services/orderService';
 import { uploadService } from '../../services/uploadService';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
+import StatusBadge from '../../components/common/StatusBadge';
 import {
-  Search, FileText, Eye, ChevronDown, ChevronUp,
+  Search, FileText, ChevronDown, ChevronUp,
   Package, Clock, CheckCircle, Inbox, ShoppingCart, AlertCircle, Upload
 } from 'lucide-react';
 import { toAbsUrl } from '../../utils/url';
@@ -26,7 +27,6 @@ const RFQStatusBadge = ({ status }) => {
 };
 
 // ── Quote card — shows actual QuoteResponse fields from API ─────────────────
-// QuoteResponse: { id, rfq_id, manufacturer_org_id, price, lead_time_days, compliance_notes, version, is_locked, status, created_at }
 const QuoteCard = ({ q, onPlaceOrder, onViewDetails }) => (
   <div className="flex items-center justify-between p-3 bg-white border border-surface-200 rounded-lg hover:border-brand-300 transition-colors flex-wrap gap-2">
     <div className="flex items-center gap-3 min-w-0">
@@ -35,7 +35,7 @@ const QuoteCard = ({ q, onPlaceOrder, onViewDetails }) => (
       </div>
       <div className="min-w-0">
         <p className="text-sm font-medium text-brand-900">
-          Quote #{q.id} — <span className="text-accent-700 font-semibold">₹{parseFloat(q.price || 0).toLocaleString()}</span>
+          Quote #{q.id} — <span className="text-accent-700 font-semibold">₹{parseFloat(q.price || 0).toLocaleString('en-IN')}</span>
         </p>
         <p className="text-xs text-brand-400">
           Lead time: <span className="font-medium text-brand-600">{q.lead_time_days} days</span>
@@ -45,14 +45,12 @@ const QuoteCard = ({ q, onPlaceOrder, onViewDetails }) => (
           {q.created_at ? new Date(q.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
         </p>
         {q.compliance_notes && (
-          <p className="text-xs text-brand-500 mt-0.5 truncate max-w-xs italic">"{q.compliance_notes}"</p>
+          <p className="text-xs text-brand-500 mt-0.5 truncate max-w-xs italic">&ldquo;{q.compliance_notes}&rdquo;</p>
         )}
       </div>
     </div>
     <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-      <span className={`badge text-xs ${q.status === 'accepted' ? 'bg-green-100 text-green-700' : q.status === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-700'}`}>
-        {q.status}
-      </span>
+      <StatusBadge status={q.status} />
       {onViewDetails && (
         <button onClick={() => onViewDetails(q)} className="btn-secondary text-xs py-1.5 px-3">
           View Details
