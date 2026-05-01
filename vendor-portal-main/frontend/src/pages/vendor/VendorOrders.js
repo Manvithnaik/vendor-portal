@@ -269,9 +269,6 @@ const VendorOrders = () => {
               rfqs.map(rfq => (
                 <div key={rfq.id} className="flex items-center justify-between px-5 py-4 hover:bg-surface-50 transition-colors">
                   <div className="flex items-center gap-4 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
-                      <Package size={16} className="text-indigo-600" />
-                    </div>
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-brand-900 truncate">{rfq.title}</p>
                       <p className="text-xs text-brand-400">
