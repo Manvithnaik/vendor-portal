@@ -9,6 +9,13 @@ class UserRepository(BaseRepository[User]):
     def __init__(self, db: Session):
         super().__init__(User, db)
 
+    def get(self, record_id: int) -> Optional[User]:
+        return (
+            self.db.query(User)
+            .filter(User.id == record_id)
+            .first()
+        )
+
     def get_by_email(self, email: str) -> Optional[User]:
         return (
             self.db.query(User)

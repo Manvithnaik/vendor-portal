@@ -11,6 +11,7 @@ class RFQCreate(BaseModel):
     title: str
     description: Optional[str] = None
     category_id: Optional[int] = None
+    product_id: Optional[int] = None
     location_filter: Optional[str] = None
     min_vendor_rating: Optional[float] = None
     deadline: datetime
@@ -27,17 +28,45 @@ class RFQUpdate(BaseModel):
     cancellation_reason: Optional[str] = None
 
 
+class OrganizationCompact(BaseModel):
+    name: str
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    address_line1: Optional[str] = None
+    city: Optional[str] = None
+    
+    model_config = {"from_attributes": True}
+
+class ProductCategoryCompact(BaseModel):
+    id: int
+    name: str
+    
+    model_config = {"from_attributes": True}
+
+class ProductCompact(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    
+    model_config = {"from_attributes": True}
+
 class RFQResponse(BaseModel):
     id: int
     org_id: int
     title: str
     description: Optional[str] = None
     category_id: Optional[int] = None
+    product_id: Optional[int] = None
     deadline: datetime
     is_priority: bool
     status: RfqStatusEnum
     created_at: datetime
     updated_at: datetime
+    org_name: Optional[str] = None
+    org: Optional[OrganizationCompact] = None
+    category: Optional[ProductCategoryCompact] = None
+    product: Optional[ProductCompact] = None
 
     model_config = {"from_attributes": True}
 
@@ -48,6 +77,7 @@ class QuoteCreate(BaseModel):
     price: float
     lead_time_days: int
     compliance_notes: Optional[str] = None
+    document_url: str
 
 
 class QuoteResponse(BaseModel):
@@ -57,10 +87,14 @@ class QuoteResponse(BaseModel):
     price: float
     lead_time_days: int
     compliance_notes: Optional[str] = None
+    document_url: Optional[str] = None
     version: int
     is_locked: bool
     status: QuoteStatusEnum  # NEW: submitted | accepted | rejected
     created_at: datetime
+    manufacturer_org_name: Optional[str] = None
+    manufacturer_org: Optional[OrganizationCompact] = None
+
 
     model_config = {"from_attributes": True}
 
@@ -90,7 +124,7 @@ class DisputeUpdate(BaseModel):
 class DisputeResponse(BaseModel):
     id: int
     order_id: int
-    customer_org_id: int
+    buyer_org_id: int
     manufacturer_org_id: int
     rma_number: str
     dispute_type: str

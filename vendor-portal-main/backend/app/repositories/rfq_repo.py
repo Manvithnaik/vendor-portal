@@ -1,6 +1,6 @@
 from typing import List, Optional
-from sqlalchemy.orm import Session
 from sqlalchemy import or_, exists
+from sqlalchemy.orm import Session, joinedload
 from app.models.vendor_portal import RFQ, RFQBroadcast, Quote
 from app.repositories.base import BaseRepository
 
@@ -12,6 +12,7 @@ class RFQRepository(BaseRepository[RFQ]):
     def get_by_org(self, org_id: int) -> List[RFQ]:
         return (
             self.db.query(RFQ)
+            .options(joinedload(RFQ.org))
             .filter(RFQ.org_id == org_id, RFQ.deleted_at.is_(None))
             .order_by(RFQ.created_at.desc())
             .all()
@@ -29,6 +30,7 @@ class RFQRepository(BaseRepository[RFQ]):
         )
         return (
             self.db.query(RFQ)
+            .options(joinedload(RFQ.org))
             .filter(
                 RFQ.deleted_at.is_(None),
                 or_(targeted_to_me, ~has_any_broadcast)  # broadcast to me, or open to all
@@ -52,6 +54,7 @@ class QuoteRepository(BaseRepository[Quote]):
     def get_by_rfq(self, rfq_id: int) -> List[Quote]:
         return (
             self.db.query(Quote)
+            .options(joinedload(Quote.manufacturer_org))
             .filter(Quote.rfq_id == rfq_id, Quote.deleted_at.is_(None))
             .all()
         )

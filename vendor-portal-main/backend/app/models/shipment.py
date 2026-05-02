@@ -22,7 +22,7 @@ class Shipment(Base):
     shipment_number = Column(String(100), nullable=False, unique=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
     manufacturer_org_id = Column(Integer, ForeignKey("organizations.id"), index=True)
-    customer_org_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    buyer_org_id = Column("customer_org_id", Integer, ForeignKey("organizations.id"), index=True)
     is_partial = Column(Boolean, nullable=False, default=False)
     origin_logistics_id = Column(Integer, ForeignKey("supply_chain_logistics.id"))
     carrier = Column(String(255))
@@ -52,7 +52,7 @@ class Shipment(Base):
     # Relationships
     order = relationship("Order", back_populates="shipments")
     manufacturer_org = relationship("Organization", foreign_keys=[manufacturer_org_id])
-    customer_org = relationship("Organization", foreign_keys=[customer_org_id])
+    buyer_org = relationship("Organization", foreign_keys=[buyer_org_id])
     dispatcher = relationship("User", foreign_keys=[dispatched_by])
     receiver = relationship("User", foreign_keys=[received_by])
     events = relationship("ShipmentEvent", back_populates="shipment", cascade="all, delete-orphan")

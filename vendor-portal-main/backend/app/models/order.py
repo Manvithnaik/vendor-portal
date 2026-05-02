@@ -3,6 +3,7 @@ SQLAlchemy models for schema.sql section 5 — orders, order_items,
 order_status_history.
 """
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, Date, ForeignKey,
@@ -20,7 +21,7 @@ class Order(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     order_number = Column(String(100), nullable=False, unique=True)
-    customer_org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    buyer_org_id = Column("customer_org_id", Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     manufacturer_org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=True, index=True)  # Now optional: set via quote
     quotation_id = Column(Integer, ForeignKey("quotes.id"), nullable=True, index=True)    # NEW: links back to accepted quote
@@ -52,18 +53,36 @@ class Order(Base):
     updated_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
 
     # Relationships
-    customer_org = relationship("Organization", foreign_keys=[customer_org_id])
+    buyer_org = relationship("Organization", foreign_keys=[buyer_org_id])
     manufacturer_org = relationship("Organization", foreign_keys=[manufacturer_org_id])
     contract = relationship("Contract", back_populates="orders")
     creator = relationship("User", foreign_keys=[created_by])
     approver = relationship("User", foreign_keys=[approved_by])
     grn_confirmer = relationship("User", foreign_keys=[grn_confirmed_by])
+    quotation = relationship("Quote", foreign_keys=[quotation_id])
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     status_history = relationship(
         "OrderStatusHistory", back_populates="order", cascade="all, delete-orphan"
     )
     shipments = relationship("Shipment", back_populates="order")
     invoices = relationship("Invoice", back_populates="order")
+
+    @property
+    def vendor_name(self) -> Optional[str]:
+        return self.manufacturer_org.name if self.manufacturer_org else None
+
+    @property
+    def buyer_name(self) -> Optional[str]:
+        """Name of the buying organization (called 'Manufacturer' in the UI)."""
+        return self.buyer_org.name if self.buyer_org else None
+
+    @property
+    def manufacturer_org_code(self) -> Optional[str]:
+        return self.manufacturer_org.org_code if self.manufacturer_org else None
+
+    @property
+    def buyer_org_code(self) -> Optional[str]:
+        return self.buyer_org.org_code if self.buyer_org else None
 
 
 class OrderItem(Base):
@@ -86,6 +105,10 @@ class OrderItem(Base):
     order = relationship("Order", back_populates="items")
     product = relationship("Product", back_populates="order_items")
     contract_pricing = relationship("ContractProductPricing", back_populates="order_items")
+
+    @property
+    def product_name(self):
+        return self.product.name if self.product else None
 
 
 class OrderStatusHistory(Base):

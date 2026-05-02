@@ -11,12 +11,19 @@ from app.schemas.vendor_portal import (
     DisputeCreate, DisputeUpdate, DisputeResponse,
     RefundCreate, RefundResponse
 )
+from app.schemas.organization import OrganizationResponse
 from app.schemas.common import APIResponse, success_response
 from app.services.rfq_service import RFQService
 from app.services.dispute_service import DisputeService
 
 
 router = APIRouter(prefix="/vendor", tags=["Vendor Portal"])
+
+@router.get("/application-status", response_model=APIResponse)
+def get_application_status(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """Fetch the organization details for the current user to track application status."""
+    org = db.query(Organization).filter(Organization.id == current_user.org_id).first()
+    return success_response("Application status retrieved.", OrganizationResponse.model_validate(org))
 
 # --- RFQ Routes ---
 @router.post("/rfq", response_model=APIResponse)
@@ -57,6 +64,13 @@ def list_quotes(rfq_id: int, db: Session = Depends(get_db), _=Depends(get_curren
     quotes = svc.list_quotes_for_rfq(rfq_id)
     return success_response("Quotes retrieved.", [QuoteResponse.model_validate(q) for q in quotes])
 
+@router.get("/my-quotes", response_model=APIResponse)
+def list_my_quotes(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    svc = RFQService(db)
+    quotes = svc.quote_repo.get_by_manufacturer(current_user.org_id)
+    return success_response("My quotes retrieved.", [QuoteResponse.model_validate(q) for q in quotes])
+
+
 @router.post("/rfq/{rfq_id}/select-quote/{quote_id}", response_model=APIResponse)
 def select_quote(
     rfq_id: int,
@@ -85,10 +99,10 @@ def create_dispute(data: DisputeCreate, db: Session = Depends(get_db), current_u
     return success_response("Dispute created.", DisputeResponse.model_validate(dispute))
 
 @router.get("/disputes", response_model=APIResponse)
-def list_disputes(org_id: int = None, as_customer: bool = True, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def list_disputes(org_id: int = None, as_buyer: bool = True, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     svc = DisputeService(db)
     target_org = org_id if org_id else current_user.org_id
-    disputes = svc.list_by_org(target_org, as_customer)
+    disputes = svc.list_by_org(target_org, as_buyer)
     return success_response("Disputes retrieved.", [DisputeResponse.model_validate(d) for d in disputes])
 
 @router.put("/disputes/{dispute_id}", response_model=APIResponse)

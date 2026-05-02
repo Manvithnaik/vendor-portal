@@ -25,7 +25,7 @@ class ShipmentRepository(BaseRepository[Shipment]):
                 .filter(Shipment.manufacturer_org_id == org_id)
                 .all()
             )
-        return self.db.query(Shipment).filter(Shipment.customer_org_id == org_id).all()
+        return self.db.query(Shipment).filter(Shipment.buyer_org_id == org_id).all()
 
 
 class ShipmentEventRepository(BaseRepository[ShipmentEvent]):

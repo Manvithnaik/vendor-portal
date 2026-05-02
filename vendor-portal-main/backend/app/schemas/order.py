@@ -10,7 +10,7 @@ The service layer translates these via mappers.py before writing to the DB.
 """
 from datetime import date, datetime
 from typing import List, Optional
-from pydantic import BaseModel, field_validator, field_serializer
+from pydantic import BaseModel, field_validator, field_serializer, model_validator
 from app.models.enums import OrderStatusEnum, OrderPriorityEnum
 
 
@@ -35,6 +35,7 @@ class OrderItemCreate(BaseModel):
 class OrderItemResponse(BaseModel):
     id: int
     product_id: int
+    product_name: Optional[str] = None
     contract_pricing_id: Optional[int] = None
     quantity: int
     shipped_qty: float
@@ -88,8 +89,10 @@ class OrderStatusUpdate(BaseModel):
 class OrderResponse(BaseModel):
     id: int
     order_number: str
-    customer_org_id: int
+    buyer_org_id: int
     manufacturer_org_id: int
+    manufacturer_org_code: Optional[str] = None
+    buyer_org_code: Optional[str] = None
     contract_id: Optional[int] = None
     quotation_id: Optional[int] = None
     po_document_url: Optional[str] = None
@@ -109,7 +112,17 @@ class OrderResponse(BaseModel):
     updated_at: datetime
     items: List[OrderItemResponse] = []
 
+    vendor_name: Optional[str] = None
+    buyer_name: Optional[str] = None
+
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def populate_org_names(self) -> "OrderResponse":
+        # Properties in the model now handle vendor_name and customer_name
+        return self
+
+
 
     @field_serializer("status")
     def serialize_status(self, status: OrderStatusEnum) -> str:

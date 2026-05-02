@@ -60,6 +60,14 @@ class Product(Base):
     contract_pricing = relationship("ContractProductPricing", back_populates="product")
     order_items = relationship("OrderItem", back_populates="product")
 
+    @property
+    def vendor_name(self):
+        return self.manufacturer_org.name if self.manufacturer_org else None
+
+    @property
+    def vendor_email(self):
+        return self.manufacturer_org.email if self.manufacturer_org else None
+
 
 class ProductTag(Base):
     __tablename__ = "product_tags"
