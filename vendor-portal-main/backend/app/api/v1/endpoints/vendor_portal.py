@@ -99,10 +99,10 @@ def create_dispute(data: DisputeCreate, db: Session = Depends(get_db), current_u
     return success_response("Dispute created.", DisputeResponse.model_validate(dispute))
 
 @router.get("/disputes", response_model=APIResponse)
-def list_disputes(org_id: int = None, as_customer: bool = True, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def list_disputes(org_id: int = None, as_buyer: bool = True, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     svc = DisputeService(db)
     target_org = org_id if org_id else current_user.org_id
-    disputes = svc.list_by_org(target_org, as_customer)
+    disputes = svc.list_by_org(target_org, as_buyer)
     return success_response("Disputes retrieved.", [DisputeResponse.model_validate(d) for d in disputes])
 
 @router.put("/disputes/{dispute_id}", response_model=APIResponse)

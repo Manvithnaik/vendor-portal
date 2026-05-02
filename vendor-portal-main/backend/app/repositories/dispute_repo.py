@@ -15,12 +15,12 @@ class DisputeRepository(BaseRepository[Dispute]):
             .all()
         )
 
-    def get_by_org(self, org_id: int, as_customer: bool = True) -> List[Dispute]:
-        if as_customer:
+    def get_by_org(self, org_id: int, as_buyer: bool = True) -> List[Dispute]:
+        if as_buyer:
             return (
                 self.db.query(Dispute)
                 .filter(
-                    Dispute.customer_org_id == org_id,
+                    Dispute.buyer_org_id == org_id,
                     Dispute.deleted_at.is_(None),
                 )
                 .all()

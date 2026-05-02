@@ -15,7 +15,7 @@ class OrderRepository(BaseRepository[Order]):
             .options(
                 joinedload(Order.items).joinedload(OrderItem.product),
                 joinedload(Order.manufacturer_org),
-                joinedload(Order.customer_org),
+                joinedload(Order.buyer_org),
             )
             .filter(Order.id == id)
             .first()
@@ -24,13 +24,13 @@ class OrderRepository(BaseRepository[Order]):
     def get_by_org(
         self,
         org_id: int,
-        as_customer: bool = True,
+        as_buyer: bool = True,
         status: Optional[OrderStatusEnum] = None,
         skip: int = 0,
         limit: int = 100,
     ) -> List[Order]:
-        if as_customer:
-            q = self.db.query(Order).filter(Order.customer_org_id == org_id)
+        if as_buyer:
+            q = self.db.query(Order).filter(Order.buyer_org_id == org_id)
         else:
             q = self.db.query(Order).filter(Order.manufacturer_org_id == org_id)
         if status:
@@ -39,7 +39,7 @@ class OrderRepository(BaseRepository[Order]):
         q = q.options(
             joinedload(Order.items).joinedload(OrderItem.product),
             joinedload(Order.manufacturer_org),
-            joinedload(Order.customer_org),
+            joinedload(Order.buyer_org),
         )
 
         return q.order_by(Order.created_at.desc()).offset(skip).limit(limit).all()
@@ -50,7 +50,7 @@ class OrderRepository(BaseRepository[Order]):
             .options(
                 joinedload(Order.items).joinedload(OrderItem.product),
                 joinedload(Order.manufacturer_org),
-                joinedload(Order.customer_org),
+                joinedload(Order.buyer_org),
             )
             .filter(Order.order_number == order_number)
             .first()

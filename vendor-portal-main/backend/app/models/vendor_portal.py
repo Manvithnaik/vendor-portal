@@ -292,7 +292,7 @@ class Dispute(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     order_id = Column(Integer, ForeignKey("orders.id", ondelete="RESTRICT"), nullable=False, index=True)
-    customer_org_id = Column(Integer, ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False)
+    buyer_org_id = Column("customer_org_id", Integer, ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False)
     manufacturer_org_id = Column(
         Integer, ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
     )
@@ -315,7 +315,7 @@ class Dispute(Base):
     deleted_at = Column(TIMESTAMP(timezone=True))
 
     order = relationship("Order", foreign_keys=[order_id])
-    customer_org = relationship("Organization", foreign_keys=[customer_org_id])
+    buyer_org = relationship("Organization", foreign_keys=[buyer_org_id])
     manufacturer_org = relationship("Organization", foreign_keys=[manufacturer_org_id])
     mediator = relationship("Admin", foreign_keys=[mediator_id])
     raiser = relationship("User", foreign_keys=[raised_by])

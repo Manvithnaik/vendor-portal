@@ -22,7 +22,7 @@ class PaymentProfile(Base):
     __tablename__ = "payment_profiles"
 
     id = Column(Integer, primary_key=True, index=True)
-    customer_org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    buyer_org_id = Column("customer_org_id", Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     profile_name = Column(String(255), nullable=False)
     payment_method = Column(
         SAEnum(PaymentMethodEnum, name="payment_method_enum"), nullable=False
@@ -34,7 +34,7 @@ class PaymentProfile(Base):
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
 
     # Relationships
-    customer_org = relationship("Organization", foreign_keys=[customer_org_id])
+    buyer_org = relationship("Organization", foreign_keys=[buyer_org_id])
     payments = relationship("Payment", back_populates="payment_profile")
 
 

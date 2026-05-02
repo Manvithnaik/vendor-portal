@@ -367,7 +367,7 @@ class AnalyticsService:
                 "priority": getattr(r.priority, 'name', str(r.priority))
             })
 
-        return {
+        output = {
             "range": range_str,
             "kpis": {
                 "revenue": {"value": c_rev, "change_pct": rev_change, "insight": f"{'Stable' if rev_change == 0 else 'Increasing' if rev_change > 0 else 'Decreasing'} monthly revenue"},
@@ -386,6 +386,6 @@ class AnalyticsService:
                 "oldest_pending_days": oldest_pending_days
             }
         }
-        
+
         AnalyticsService._vendor_cache.set(cache_key, output)
         return output
