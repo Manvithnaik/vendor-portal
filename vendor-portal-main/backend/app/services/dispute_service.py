@@ -21,11 +21,11 @@ class DisputeService:
             raise NotFoundException("Dispute")
         return d
 
-    def list_by_org(self, org_id: int, as_customer: bool = True):
-        return self.dispute_repo.get_by_org(org_id, as_customer)
+    def list_by_org(self, org_id: int, as_buyer: bool = True):
+        return self.dispute_repo.get_by_org(org_id, as_buyer)
 
     def create_dispute(
-        self, data: DisputeCreate, customer_org_id: int, raised_by: int
+        self, data: DisputeCreate, buyer_org_id: int, raised_by: int
     ) -> Dispute:
         order = self.order_repo.get(data.order_id)
         if not order:
@@ -34,7 +34,7 @@ class DisputeService:
         rma_number = f"RMA-{uuid.uuid4().hex[:6].upper()}"
         dispute = Dispute(
             order_id=data.order_id,
-            customer_org_id=customer_org_id,
+            buyer_org_id=buyer_org_id,
             manufacturer_org_id=order.manufacturer_org_id,
             rma_number=rma_number,
             dispute_type=data.dispute_type,

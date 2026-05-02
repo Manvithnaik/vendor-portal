@@ -55,7 +55,7 @@ class OrderService:
     # ------------------------------------------------------------------
     # Creation — ENFORCES: quotation_id + po_document_url required
     # ------------------------------------------------------------------
-    def create(self, data: OrderCreate, current_user_id: int, customer_org_id: int) -> Order:
+    def create(self, data: OrderCreate, current_user_id: int, buyer_org_id: int) -> Order:
         # Rule 1: quotation must exist and belong to a real RFQ
         quote = self.db.query(Quote).filter(Quote.id == data.quotation_id).first()
         if not quote:
@@ -89,7 +89,7 @@ class OrderService:
         try:
             order = Order(
                 order_number=order_number,
-                customer_org_id=customer_org_id,
+                buyer_org_id=buyer_org_id,
                 manufacturer_org_id=data.manufacturer_org_id,
                 contract_id=data.contract_id,          # Optional
                 quotation_id=data.quotation_id,        # NEW
@@ -242,9 +242,10 @@ class OrderService:
             raise NotFoundException("Order")
             
         if current_org_id and org_type_name:
+            # org_type_name is the DB enum value: 'manufacturer' = vendor, 'customer' = buyer
             if org_type_name == "manufacturer" and order.manufacturer_org_id != current_org_id:
                 raise UnauthorizedException("Unauthorized to access this order.")
-            elif org_type_name == "customer" and order.customer_org_id != current_org_id:
+            elif org_type_name == "customer" and order.buyer_org_id != current_org_id:
                 raise UnauthorizedException("Unauthorized to access this order.")
                 
         return order
@@ -252,7 +253,7 @@ class OrderService:
     def list_by_org(
         self,
         org_id: int,
-        as_customer: bool = True,
+        as_buyer: bool = True,
         status: Optional[str] = None,
         skip: int = 0,
         limit: int = 100,
@@ -260,7 +261,7 @@ class OrderService:
         db_status = None
         if status:
             db_status = map_order_status_to_db(status)
-        return self.repo.get_by_org(org_id, as_customer, db_status, skip, limit)
+        return self.repo.get_by_org(org_id, as_buyer, db_status, skip, limit)
 
     def get_status_history(self, order_id: int, current_org_id: int = None, org_type_name: str = None):
         self.get_by_id(order_id, current_org_id, org_type_name) # Ensure ownership first

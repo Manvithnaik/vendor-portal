@@ -21,7 +21,7 @@ class Order(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     order_number = Column(String(100), nullable=False, unique=True)
-    customer_org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    buyer_org_id = Column("customer_org_id", Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     manufacturer_org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=True, index=True)  # Now optional: set via quote
     quotation_id = Column(Integer, ForeignKey("quotes.id"), nullable=True, index=True)    # NEW: links back to accepted quote
@@ -53,7 +53,7 @@ class Order(Base):
     updated_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
 
     # Relationships
-    customer_org = relationship("Organization", foreign_keys=[customer_org_id])
+    buyer_org = relationship("Organization", foreign_keys=[buyer_org_id])
     manufacturer_org = relationship("Organization", foreign_keys=[manufacturer_org_id])
     contract = relationship("Contract", back_populates="orders")
     creator = relationship("User", foreign_keys=[created_by])
@@ -72,16 +72,17 @@ class Order(Base):
         return self.manufacturer_org.name if self.manufacturer_org else None
 
     @property
-    def customer_name(self) -> Optional[str]:
-        return self.customer_org.name if self.customer_org else None
+    def buyer_name(self) -> Optional[str]:
+        """Name of the buying organization (called 'Manufacturer' in the UI)."""
+        return self.buyer_org.name if self.buyer_org else None
 
     @property
     def manufacturer_org_code(self) -> Optional[str]:
         return self.manufacturer_org.org_code if self.manufacturer_org else None
 
     @property
-    def customer_org_code(self) -> Optional[str]:
-        return self.customer_org.org_code if self.customer_org else None
+    def buyer_org_code(self) -> Optional[str]:
+        return self.buyer_org.org_code if self.buyer_org else None
 
 
 class OrderItem(Base):

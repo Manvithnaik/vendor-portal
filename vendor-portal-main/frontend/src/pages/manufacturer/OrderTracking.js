@@ -120,7 +120,7 @@ const analyzeOrderData = (order) => {
   let keyNumeric = null;
   const currencyKeys = Object.keys(numerics).filter(k => k.toLowerCase().match(/(price|amount|total|cost|value)/));
   if (currencyKeys.length > 0) {
-     keyNumeric = `$${Number(numerics[currencyKeys[0]]).toFixed(2)}`;
+     keyNumeric = `₹${Number(numerics[currencyKeys[0]]).toLocaleString('en-IN')}`;
   } else if (Object.keys(numerics).length > 0) {
      const firstKey = Object.keys(numerics)[0];
      keyNumeric = `${formatLabel(firstKey)}: ${numerics[firstKey]}`;
@@ -302,7 +302,7 @@ const SideDrawer = ({ order, onClose }) => {
                           <div key={k}>
                             <span className="block text-brand-400 text-[11px] uppercase mb-0.5 font-medium">{formatLabel(k)}</span>
                             <span className={`font-semibold ${isCurrency ? 'text-accent-700' : 'text-brand-900'}`}>
-                              {isCurrency ? `$${Number(v).toFixed(2)}` : v}
+                              {isCurrency ? `₹${Number(v).toLocaleString('en-IN')}` : v}
                             </span>
                           </div>
                         );

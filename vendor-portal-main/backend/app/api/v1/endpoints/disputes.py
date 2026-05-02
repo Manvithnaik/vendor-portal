@@ -107,13 +107,14 @@ def create_dispute(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    """Step 1 — Manufacturer raises a dispute on a delivered/accepted/shipped order."""
+    """Step 1 — Manufacturer (buyer) raises a dispute on a delivered/accepted/shipped order."""
+    # OrgTypeEnum.customer = Buyer role (called 'Manufacturer' in the UI)
     if current_user.organization.org_type != OrgTypeEnum.customer:
-        raise UnauthorizedException("Only manufacturers (buyers) can raise disputes.")
+        raise UnauthorizedException("Only buyers (Manufacturers) can raise disputes.")
 
     order = db.query(Order).filter(
         Order.id == data.order_id,
-        Order.customer_org_id == current_user.org_id
+        Order.buyer_org_id == current_user.org_id
     ).first()
     if not order:
         raise NotFoundException("Order")
@@ -151,8 +152,9 @@ def list_disputes(
     org_type = current_user.organization.org_type
 
     query = db.query(Order)
+    # OrgTypeEnum.customer = Buyer (called 'Manufacturer' in UI); .manufacturer = Vendor/Supplier
     if org_type == OrgTypeEnum.customer:
-        query = query.filter(Order.customer_org_id == current_user.org_id)
+        query = query.filter(Order.buyer_org_id == current_user.org_id)
     else:
         query = query.filter(Order.manufacturer_org_id == current_user.org_id)
 
@@ -220,14 +222,15 @@ def update_dispute(
     """Update dispute at any lifecycle step, enforcing strict role-based access."""
     org_type = current_user.organization.org_type
 
-    # Vendors own the order as manufacturer_org, manufacturers as customer_org
+    # OrgTypeEnum.manufacturer = Vendor/Supplier; .customer = Buyer (Manufacturer in UI)
+    # Vendors own orders via manufacturer_org_id; buyers own orders via buyer_org_id
     query = db.query(Order).filter(Order.id == order_id)
     if org_type == OrgTypeEnum.manufacturer:
-        # This is the VENDOR (seller) – orders belong to their manufacturer_org_id
+        # VENDOR (seller): orders belong to their manufacturer_org_id
         query = query.filter(Order.manufacturer_org_id == current_user.org_id)
     else:
-        # This is the MANUFACTURER (buyer) – orders belong to their customer_org_id
-        query = query.filter(Order.customer_org_id == current_user.org_id)
+        # BUYER (Manufacturer in UI): orders belong to their buyer_org_id
+        query = query.filter(Order.buyer_org_id == current_user.org_id)
 
     order = query.first()
     if not order:

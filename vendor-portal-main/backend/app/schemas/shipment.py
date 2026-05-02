@@ -38,7 +38,7 @@ class ShipmentResponse(BaseModel):
     shipment_number: str
     order_id: int
     manufacturer_org_id: Optional[int] = None
-    customer_org_id: Optional[int] = None
+    buyer_org_id: Optional[int] = None
     is_partial: bool
     carrier: Optional[str] = None
     tracking_number: Optional[str] = None

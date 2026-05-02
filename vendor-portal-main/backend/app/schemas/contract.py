@@ -5,7 +5,7 @@ from app.models.enums import ContractStatusEnum
 
 
 class ContractCreate(BaseModel):
-    customer_org_id: int
+    buyer_org_id: int
     manufacturer_org_id: int
     contract_number: str
     name: Optional[str] = None
@@ -30,7 +30,7 @@ class ContractUpdate(BaseModel):
 
 class ContractResponse(BaseModel):
     id: int
-    customer_org_id: int
+    buyer_org_id: int
     manufacturer_org_id: int
     contract_number: str
     name: Optional[str] = None

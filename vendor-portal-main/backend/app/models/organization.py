@@ -35,7 +35,7 @@ class Organization(Base):
     business_doc = Column(String(500))
     business_doc_data = Column(Text)
 
-    # Vendor-specific fields (NULL for customer orgs)
+    # Vendor-specific fields (NULL for buyer/manufacturer orgs)
     contact_name = Column(String(150))
     contact_email = Column(String(150))
     contact_phone = Column(String(20))
@@ -59,8 +59,8 @@ class Organization(Base):
 
     # Relationships
     users = relationship("User", back_populates="organization", foreign_keys="User.org_id")
-    contracts_as_customer = relationship(
-        "Contract", back_populates="customer_org", foreign_keys="Contract.customer_org_id"
+    contracts_as_buyer = relationship(
+        "Contract", back_populates="buyer_org", foreign_keys="Contract.buyer_org_id"
     )
     contracts_as_manufacturer = relationship(
         "Contract", back_populates="manufacturer_org", foreign_keys="Contract.manufacturer_org_id"

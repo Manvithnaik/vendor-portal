@@ -124,7 +124,7 @@ class DisputeUpdate(BaseModel):
 class DisputeResponse(BaseModel):
     id: int
     order_id: int
-    customer_org_id: int
+    buyer_org_id: int
     manufacturer_org_id: int
     rma_number: str
     dispute_type: str

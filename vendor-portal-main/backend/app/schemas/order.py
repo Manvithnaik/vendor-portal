@@ -89,10 +89,10 @@ class OrderStatusUpdate(BaseModel):
 class OrderResponse(BaseModel):
     id: int
     order_number: str
-    customer_org_id: int
+    buyer_org_id: int
     manufacturer_org_id: int
     manufacturer_org_code: Optional[str] = None
-    customer_org_code: Optional[str] = None
+    buyer_org_code: Optional[str] = None
     contract_id: Optional[int] = None
     quotation_id: Optional[int] = None
     po_document_url: Optional[str] = None
@@ -113,7 +113,7 @@ class OrderResponse(BaseModel):
     items: List[OrderItemResponse] = []
 
     vendor_name: Optional[str] = None
-    customer_name: Optional[str] = None
+    buyer_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

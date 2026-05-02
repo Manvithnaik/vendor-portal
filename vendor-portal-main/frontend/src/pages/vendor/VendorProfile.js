@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { UserCircle, Mail, MapPin, Building, Edit2, Save, X, Key, Lock, CheckCircle, Calendar } from 'lucide-react';
+import { UserCircle, Mail, MapPin, Building, Edit2, Save, X, Key, Lock, CheckCircle, Calendar, Eye, EyeOff } from 'lucide-react';
 import apiClient from '../../api/client';
 import Toast from '../../components/common/Toast';
 
@@ -40,6 +40,9 @@ const VendorProfile = () => {
     confirmNewPassword: ''
   });
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [showCurrent, setShowCurrent]   = useState(false);
+  const [showNew, setShowNew]           = useState(false);
+  const [showConfirm, setShowConfirm]   = useState(false);
 
   const fetchProfile = async () => {
     if (!user) return;
@@ -373,38 +376,56 @@ const VendorProfile = () => {
                   <div className="bg-surface-50 p-4 rounded-xl border border-surface-200">
                     <div className="mb-3">
                       <label className="block text-xs font-semibold text-brand-700 mb-1">Current Password</label>
-                      <input 
-                        type="password" 
-                        name="currentPassword" 
-                        value={passwordData.currentPassword} 
-                        onChange={handlePasswordChange} 
-                        className="input-field text-sm shadow-sm focus:ring-purple-500 focus:border-purple-500" 
-                        required 
-                      />
+                      <div className="relative">
+                        <input
+                          type={showCurrent ? 'text' : 'password'}
+                          name="currentPassword"
+                          value={passwordData.currentPassword}
+                          onChange={handlePasswordChange}
+                          className="input-field text-sm shadow-sm pr-10"
+                          required
+                        />
+                        <button type="button" onClick={() => setShowCurrent(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-400 hover:text-brand-600" tabIndex={-1}>
+                          {showCurrent ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </button>
+                      </div>
                     </div>
                     <div className="mb-3">
                       <label className="block text-xs font-semibold text-brand-700 mb-1">New Password</label>
-                      <input 
-                        type="password" 
-                        name="newPassword" 
-                        value={passwordData.newPassword} 
-                        onChange={handlePasswordChange} 
-                        className="input-field text-sm shadow-sm focus:ring-purple-500 focus:border-purple-500" 
-                        required 
-                        minLength={6}
-                      />
+                      <div className="relative">
+                        <input
+                          type={showNew ? 'text' : 'password'}
+                          name="newPassword"
+                          value={passwordData.newPassword}
+                          onChange={handlePasswordChange}
+                          className="input-field text-sm shadow-sm pr-10"
+                          required
+                          minLength={6}
+                        />
+                        <button type="button" onClick={() => setShowNew(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-400 hover:text-brand-600" tabIndex={-1}>
+                          {showNew ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </button>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-brand-700 mb-1">Confirm New Password</label>
-                      <input 
-                        type="password" 
-                        name="confirmNewPassword" 
-                        value={passwordData.confirmNewPassword} 
-                        onChange={handlePasswordChange} 
-                        className="input-field text-sm shadow-sm focus:ring-purple-500 focus:border-purple-500" 
-                        required 
-                        minLength={6}
-                      />
+                      <div className="relative">
+                        <input
+                          type={showConfirm ? 'text' : 'password'}
+                          name="confirmNewPassword"
+                          value={passwordData.confirmNewPassword}
+                          onChange={handlePasswordChange}
+                          className={`input-field text-sm shadow-sm pr-10 ${passwordData.confirmNewPassword && passwordData.newPassword !== passwordData.confirmNewPassword ? 'border-red-400' : ''}`}
+                          required
+                          minLength={6}
+                        />
+                        <button type="button" onClick={() => setShowConfirm(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-400 hover:text-brand-600" tabIndex={-1}>
+                          {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </button>
+                      </div>
+                      {passwordData.confirmNewPassword && passwordData.newPassword !== passwordData.confirmNewPassword && (
+                        <p className="text-xs text-red-600 mt-1">Passwords do not match</p>
+                      )}
                     </div>
                   </div>
                   <div className="flex gap-2">

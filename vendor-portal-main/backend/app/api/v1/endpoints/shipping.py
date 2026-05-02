@@ -28,13 +28,13 @@ def get_shipping_orders(
     for o in orders:
         product_name = o.items[0].product.name if o.items and o.items[0].product else "Unknown Product"
         quantity = sum(item.quantity for item in o.items) if o.items else 0
-        customer_name = o.customer_org.name if o.customer_org else "Unknown Customer"
+        buyer_name = o.buyer_org.name if o.buyer_org else "Unknown Buyer"
         
         results.append({
             "id": o.id,
             "order_number": o.order_number,
             "product_name": product_name,
-            "customer_name": customer_name,
+            "buyer_name": buyer_name,
             "quantity": quantity,
             "status": map_order_status_to_frontend(o.status)
         })
