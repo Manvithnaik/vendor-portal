@@ -20,7 +20,7 @@ const navItems = {
     { to: '/vendor', icon: LayoutDashboard, label: 'Dashboard', end: true },
     { to: '/vendor/profile', icon: UserCircle, label: 'Profile' },
     { to: '/vendor/products', icon: Package, label: 'Products' },
-    { to: '/vendor/orders', icon: ShoppingCart, label: 'Orders & RFQs' },
+    { to: '/vendor/orders', icon: FileText, label: 'Orders & RFQs' },
     { to: '/vendor/shipping', icon: Truck, label: 'Shipping' },
     { to: '/vendor/returns', icon: RotateCcw, label: 'Returns & Disputes' },
   ],

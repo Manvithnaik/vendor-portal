@@ -12,12 +12,6 @@ const PurchaseOrders = () => {
   const [viewOrder, setViewOrder] = useState(null);
   const [toast, setToast]       = useState(null);
 
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
-
-  const totalPages = Math.ceil(orders.length / itemsPerPage);
-  const paginatedOrders = orders.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -54,12 +48,12 @@ const PurchaseOrders = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-200">
-              {paginatedOrders.map(o => (
+              {orders.map(o => (
                 <tr key={o.id} className="hover:bg-surface-50 transition-colors">
                   <td className="px-5 py-3 font-mono text-xs text-brand-500">{o.order_number}</td>
                   <td className="px-5 py-3 font-medium text-brand-800">Org #{o.manufacturer_org_id}</td>
                   <td className="px-5 py-3 text-brand-600">
-                    $ {parseFloat(o.total_amount || 0).toLocaleString()}
+                    ₹ {parseFloat(o.total_amount || 0).toLocaleString()}
                   </td>
                   <td className="px-5 py-3"><StatusBadge status={o.status} /></td>
                   <td className="px-5 py-3 text-brand-400">
@@ -78,35 +72,6 @@ const PurchaseOrders = () => {
             </tbody>
           </table>
 
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-5 py-4 border-t border-surface-200 bg-surface-50">
-              <p className="text-xs text-brand-400">
-                Showing <span className="font-medium text-brand-700">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
-                <span className="font-medium text-brand-700">{Math.min(currentPage * itemsPerPage, orders.length)}</span> of{' '}
-                <span className="font-medium text-brand-700">{orders.length}</span> orders
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="p-1.5 rounded border border-surface-300 bg-white text-brand-600 hover:bg-surface-100 disabled:opacity-40 transition-colors"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <span className="text-xs font-medium text-brand-700 px-2">
-                  Page {currentPage} of {totalPages}
-                </span>
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  className="p-1.5 rounded border border-surface-300 bg-white text-brand-600 hover:bg-surface-100 disabled:opacity-40 transition-colors"
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -118,7 +83,7 @@ const PurchaseOrders = () => {
               {[
                 ['Order #',     viewOrder.order_number],
                 ['Vendor Org',  `Org #${viewOrder.manufacturer_org_id}`],
-                ['Amount',      `$ ${parseFloat(viewOrder.total_amount || 0).toLocaleString()}`],
+                ['Amount',      `₹ ${parseFloat(viewOrder.total_amount || 0).toLocaleString()}`],
                 ['Status',      viewOrder.status],
                 ['Priority',    viewOrder.priority],
                 ['Date',        viewOrder.created_at ? new Date(viewOrder.created_at).toLocaleDateString() : '—'],

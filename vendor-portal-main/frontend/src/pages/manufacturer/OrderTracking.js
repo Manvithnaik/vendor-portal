@@ -53,7 +53,7 @@ const OrderTracking = () => {
                     </p>
                   </div>
                   <p className="text-sm font-display font-bold text-accent-600">
-                    ${(o.productPrice * o.quantity).toFixed(2)}
+                    ₹{(o.productPrice * o.quantity).toFixed(2)}
                   </p>
                 </div>
 

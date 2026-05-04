@@ -29,8 +29,12 @@ const RFQStatusBadge = ({ status }) => {
 const QuoteCard = ({ q, onPlaceOrder }) => (
   <div className="flex items-center justify-between p-3 bg-white border border-surface-200 rounded-lg hover:border-brand-300 transition-colors flex-wrap gap-2">
     <div className="flex items-center gap-3 min-w-0">
-      <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
-        <FileText size={16} className="text-indigo-600" />
+      <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
+        {q.image ? (
+          <img src={q.image} alt="Product" className="w-full h-full object-cover" />
+        ) : (
+          <FileText size={16} className="text-indigo-600" />
+        )}
       </div>
       <div className="min-w-0">
         <p className="text-sm font-medium text-brand-900">
@@ -87,8 +91,12 @@ const RFQRow = ({ rfq, onPlaceOrder }) => {
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-surface-50 transition-colors text-left"
       >
         <div className="flex items-center gap-4 min-w-0">
-          <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
-            <Package size={16} className="text-indigo-600" />
+          <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
+            {rfq.image ? (
+              <img src={rfq.image} alt={rfq.title} className="w-full h-full object-cover" />
+            ) : (
+              <Package size={16} className="text-indigo-600" />
+            )}
           </div>
           <div className="min-w-0">
             {/* Backend RFQResponse has 'title' not 'product_name' */}
