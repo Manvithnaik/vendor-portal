@@ -7,11 +7,15 @@ import { uploadService } from '../../services/uploadService';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
 import StatusBadge from '../../components/common/StatusBadge';
+import Pagination from '../../components/common/Pagination';
 import {
   Search, FileText, ChevronDown, ChevronUp,
   Package, Clock, CheckCircle, Inbox, ShoppingCart, AlertCircle, Upload
 } from 'lucide-react';
 import { toAbsUrl } from '../../utils/url';
+import { getFullImageUrl } from '../../utils/imageUtils';
+
+const PAGE_SIZE = 10;
 
 // ── Status badge — backend RfqStatusEnum: draft|active|extended|closed|cancelled
 const RFQStatusBadge = ({ status }) => {
@@ -91,8 +95,20 @@ const RFQRow = ({ rfq, onPlaceOrder, onViewDetails }) => {
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-surface-50 transition-colors text-left"
       >
         <div className="flex items-center gap-4 min-w-0">
-          <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
-            <Package size={16} className="text-indigo-600" />
+          {/* Product thumbnail */}
+          <div className="w-12 h-12 rounded-lg overflow-hidden bg-indigo-50 flex-shrink-0 border border-surface-200">
+            {rfq.product?.image_url ? (
+              <img
+                src={getFullImageUrl(rfq.product.image_url)}
+                alt={rfq.product?.name || rfq.title}
+                className="w-full h-full object-cover"
+                onError={e => { e.currentTarget.style.display = 'none'; }}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <Package size={18} className="text-indigo-400" />
+              </div>
+            )}
           </div>
           <div className="min-w-0">
             {/* Backend RFQResponse has 'title' not 'product_name' */}
@@ -210,6 +226,13 @@ const Quotations = () => {
     return (order[a.status] ?? 5) - (order[b.status] ?? 5);
   });
 
+  const [rfqPage, setRfqPage] = useState(1);
+  // Reset page when search changes
+  const prevSearch = React.useRef(search);
+  if (prevSearch.current !== search) { prevSearch.current = search; if (rfqPage !== 1) setRfqPage(1); }
+
+  const paginatedRfqs = sorted.slice((rfqPage - 1) * PAGE_SIZE, rfqPage * PAGE_SIZE);
+
   const openCount      = rfqs.filter(r => r.status === 'active' || r.status === 'extended').length;
   const closedCount    = rfqs.filter(r => r.status === 'closed').length;
 
@@ -320,9 +343,12 @@ const Quotations = () => {
 
       {/* RFQ list */}
       {sorted.length > 0 ? (
-        <div className="space-y-3">
-          {sorted.map(rfq => <RFQRow key={rfq.id} rfq={rfq} onPlaceOrder={handlePlaceOrder} onViewDetails={(r, q) => setViewQuoteData({ rfq: r, quote: q })} />)}
-        </div>
+        <>
+          <div className="space-y-3">
+            {paginatedRfqs.map(rfq => <RFQRow key={rfq.id} rfq={rfq} onPlaceOrder={handlePlaceOrder} onViewDetails={(r, q) => setViewQuoteData({ rfq: r, quote: q })} />)}
+          </div>
+          <Pagination total={sorted.length} page={rfqPage} pageSize={PAGE_SIZE} onPageChange={setRfqPage} />
+        </>
       ) : (
         <div className="card p-16 text-center">
           <Inbox size={44} className="text-brand-200 mx-auto mb-3" />
@@ -477,6 +503,21 @@ const Quotations = () => {
             {/* Product Details (RFQ based) */}
             <div>
               <p className="font-semibold text-brand-900 border-b pb-1 mb-2 mt-4">Product / RFQ Details</p>
+              {/* Product image */}
+              {viewQuoteData.rfq.product?.image_url ? (
+                <div className="mb-3">
+                  <img
+                    src={viewQuoteData.rfq.product.image_url}
+                    alt={viewQuoteData.rfq.product.name || viewQuoteData.rfq.title}
+                    className="w-14 h-14 object-cover rounded-lg border border-surface-200 bg-surface-100"
+                    onError={e => { e.currentTarget.parentElement.style.display = 'none'; }}
+                  />
+                </div>
+              ) : (
+                <div className="mb-3 w-14 h-14 rounded-lg border border-surface-200 bg-surface-100 flex items-center justify-center text-brand-300">
+                  <Package size={22} />
+                </div>
+              )}
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
                 <div><dt className="text-brand-400">Product Name</dt><dd className="font-medium text-brand-800">{viewQuoteData.rfq.product?.name || viewQuoteData.rfq.title || '—'}</dd></div>
                 <div><dt className="text-brand-400">Category</dt><dd className="font-medium text-brand-800">{viewQuoteData.rfq.category?.name || '—'}</dd></div>

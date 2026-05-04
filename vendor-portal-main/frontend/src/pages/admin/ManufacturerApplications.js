@@ -2,8 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import apiClient from '../../api/client';
 import StatusBadge from '../../components/common/StatusBadge';
 import DetailDrawer from '../../components/common/DetailDrawer';
+import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
+import Pagination from '../../components/common/Pagination';
 import { CheckCircle, XCircle, RotateCcw, User, Calendar, Mail, ExternalLink } from 'lucide-react';
+
+const PAGE_SIZE = 15;
 
 // ── Shared helpers (same as VendorApplications) ───────────────────
 const IGNORE_FIELDS = ['id','created_at','updated_at','verification_status','verification_certificates',
@@ -33,6 +37,7 @@ const ManufacturerApplications = () => {
   const [reason, setReason]       = useState('');
   const [changes, setChanges]     = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     try {
@@ -41,6 +46,7 @@ const ManufacturerApplications = () => {
         apiClient.get('/organizations/pending-applications'),
         apiClient.get('/organizations/admin/reviewed'),
       ]);
+      // Domain inversion: DB 'customer' = Manufacturer in UI, DB 'manufacturer' = Vendor in UI
       const pending  = (pendingRes?.data  || []).filter(o => o.org_type === 'customer');
       const reviewed = (reviewedRes?.data || []).filter(o => o.org_type === 'customer');
       setApps([...pending, ...reviewed]);
@@ -53,6 +59,7 @@ const ManufacturerApplications = () => {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  const loadAndReset = useCallback(async () => { await load(); setPage(1); }, [load]);
 
   const startAction = (app, status) => { setAction({ app, status }); setReason(''); setChanges(''); };
 
@@ -65,9 +72,9 @@ const ManufacturerApplications = () => {
     try {
       await apiClient.patch(`/organizations/${app.id}/verification?status=${backendStatus}`, body);
       setToast({ message: status === 'resubmit' ? 'Resubmit request sent.' : `Application ${status}. Email sent.`, type: 'success' });
-      setAction(null); setSelected(null); load();
+      setAction(null); setSelected(null); loadAndReset();
     } catch {
-      setToast({ message: '⚠️ Status updated but email could not be sent.', type: 'error' });
+      setToast({ message: 'Failed to update status. Please try again.', type: 'error' });
     } finally { setSubmitting(false); }
   };
 
@@ -183,33 +190,6 @@ const ManufacturerApplications = () => {
             </button>
           </div>
 
-          {action && action.app.id === app.id && (
-            <div className="mt-3 p-4 bg-surface-50 border border-surface-200 rounded-xl space-y-3 animate-fade-in">
-              {action.status === 'approved' && <p className="text-sm text-brand-700">Approve this application? An email will be sent to {app.email}.</p>}
-              {action.status === 'rejected' && (
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-brand-700">Reason for Rejection <span className="text-red-500">*</span></label>
-                  <textarea className="input-field resize-none h-20 text-sm" placeholder="Clearly state why this application is being rejected..." value={reason} onChange={e=>setReason(e.target.value)} />
-                </div>
-              )}
-              {action.status === 'resubmit' && (
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-brand-700">Changes Required <span className="text-red-500">*</span></label>
-                  <textarea className="input-field resize-none h-20 text-sm" placeholder="List required changes (one per line)..." value={changes} onChange={e=>setChanges(e.target.value)} />
-                </div>
-              )}
-              <div className="flex gap-2">
-                <button onClick={() => setAction(null)} className="btn-secondary text-sm flex-1">Cancel</button>
-                <button
-                  onClick={confirmAction}
-                  disabled={submitting || (action.status==='rejected'&&!reason.trim()) || (action.status==='resubmit'&&!changes.trim())}
-                  className={`flex-1 text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 ${action.status==='approved'?'bg-green-600 text-white hover:bg-green-700':action.status==='rejected'?'bg-red-600 text-white hover:bg-red-700':'bg-orange-500 text-white hover:bg-orange-600'}`}
-                >
-                  {submitting ? 'Saving...' : `Confirm ${action.status === 'approved' ? 'Approval' : action.status === 'rejected' ? 'Rejection' : 'Resubmit'}`}
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -241,7 +221,7 @@ const ManufacturerApplications = () => {
                 <tr><td colSpan={6} className="px-6 py-12 text-center text-brand-300">Loading applications...</td></tr>
               ) : apps.length === 0 ? (
                 <tr><td colSpan={6} className="px-6 py-12 text-center text-brand-400">No manufacturer applications found.</td></tr>
-              ) : apps.map(app => (
+              ) : apps.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(app => (
                 <tr
                   key={app.id}
                   onClick={() => { setSelected(app); setAction(null); }}
@@ -267,6 +247,7 @@ const ManufacturerApplications = () => {
             </tbody>
           </table>
         </div>
+        <Pagination total={apps.length} page={page} pageSize={PAGE_SIZE} onPageChange={setPage} />
       </div>
 
       <DetailDrawer
@@ -278,6 +259,75 @@ const ManufacturerApplications = () => {
       >
         {selected && <DrawerContent app={selected} />}
       </DetailDrawer>
+
+      {/* ── Centered confirmation modal ──────────────────────────── */}
+      <Modal
+        open={!!action}
+        onClose={() => setAction(null)}
+        size="sm"
+        title={
+          action?.status === 'approved' ? 'Approve Application'
+          : action?.status === 'rejected' ? 'Reject Application'
+          : 'Request Resubmission'
+        }
+      >
+        {action && (
+          <div className="space-y-4">
+            {action.status === 'approved' && (
+              <p className="text-sm text-brand-700">
+                Approve <strong>{action.app.name}</strong>? An approval email will be sent to the applicant.
+              </p>
+            )}
+            {action.status === 'rejected' && (
+              <div className="space-y-2">
+                <p className="text-sm text-brand-600">Rejecting <strong>{action.app.name}</strong>.</p>
+                <label className="block text-sm font-semibold text-brand-700">
+                  Reason for Rejection <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  className="input-field resize-none h-24 text-sm w-full"
+                  placeholder="Clearly state why this application is being rejected..."
+                  value={reason}
+                  onChange={e => setReason(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            )}
+            {action.status === 'resubmit' && (
+              <div className="space-y-2">
+                <p className="text-sm text-brand-600">Request changes from <strong>{action.app.name}</strong>.</p>
+                <label className="block text-sm font-semibold text-brand-700">
+                  Changes Required <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  className="input-field resize-none h-24 text-sm w-full"
+                  placeholder="List required changes (one per line)..."
+                  value={changes}
+                  onChange={e => setChanges(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            )}
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setAction(null)} className="btn-secondary text-sm flex-1">Cancel</button>
+              <button
+                onClick={confirmAction}
+                disabled={submitting || (action.status === 'rejected' && !reason.trim()) || (action.status === 'resubmit' && !changes.trim())}
+                className={`flex-1 text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 ${
+                  action.status === 'approved' ? 'bg-green-600 text-white hover:bg-green-700'
+                  : action.status === 'rejected' ? 'bg-red-600 text-white hover:bg-red-700'
+                  : 'bg-orange-500 text-white hover:bg-orange-600'
+                }`}
+              >
+                {submitting ? 'Saving...'
+                  : action.status === 'approved' ? 'Confirm Approval'
+                  : action.status === 'rejected' ? 'Confirm Rejection'
+                  : 'Confirm Resubmit'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

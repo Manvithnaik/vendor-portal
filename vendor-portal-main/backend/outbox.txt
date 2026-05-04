@@ -75,3 +75,25 @@ If you did not request this, ignore this email — your password will not change.
 
 --------------------------------------------------
 
+--- EMAIL TO: kulalsameeksha03@gmail.com at 2026-05-04 10:49:04.920137 ---
+SUBJECT: Reset your password
+
+You requested a password reset. Click the link below to reset your password. This link expires in 1 hour.
+    
+Reset password link: http://localhost:3000/reset-password?token=BwZehE-omBCJUhOSSYmA_7SHK-TS9yZuzNr23X1kRz4
+
+If you did not request this, ignore this email — your password will not change.
+
+--------------------------------------------------
+
+--- EMAIL TO: manvithnaik612@gmail.com at 2026-05-04 10:49:45.157489 ---
+SUBJECT: Reset your password
+
+You requested a password reset. Click the link below to reset your password. This link expires in 1 hour.
+    
+Reset password link: http://localhost:3000/reset-password?token=KGe7nDOWY8wqv2fPEGVcbatre_Q5IjCBkb-qeu4d6RI
+
+If you did not request this, ignore this email — your password will not change.
+
+--------------------------------------------------
+

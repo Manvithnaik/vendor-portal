@@ -71,6 +71,33 @@ def list_my_quotes(db: Session = Depends(get_db), current_user=Depends(get_curre
     return success_response("My quotes retrieved.", [QuoteResponse.model_validate(q) for q in quotes])
 
 
+@router.patch("/quotes/{quote_id}", response_model=APIResponse)
+def update_quote(
+    quote_id: int,
+    data: QuoteCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """Vendor updates a previously submitted quote (price, lead time, notes, document).
+    Only allowed while the quote is still in 'submitted' status (not yet accepted/rejected)."""
+    from fastapi import HTTPException, status as http_status
+    from app.models.vendor_portal import Quote
+    quote = db.query(Quote).filter(Quote.id == quote_id, Quote.manufacturer_org_id == current_user.org_id).first()
+    if not quote:
+        raise HTTPException(status_code=404, detail="Quote not found.")
+    from app.models.enums import QuoteStatusEnum
+    if quote.status not in (QuoteStatusEnum.submitted,):
+        raise HTTPException(status_code=400, detail="Quote can only be updated while in 'submitted' status.")
+    quote.price = data.price
+    quote.lead_time_days = data.lead_time_days
+    quote.compliance_notes = data.compliance_notes
+    if data.document_url:
+        quote.document_url = data.document_url
+    db.commit()
+    db.refresh(quote)
+    return success_response("Quote updated.", QuoteResponse.model_validate(quote))
+
+
 @router.post("/rfq/{rfq_id}/select-quote/{quote_id}", response_model=APIResponse)
 def select_quote(
     rfq_id: int,

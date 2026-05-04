@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Mail, CheckCircle } from "lucide-react";
 import Toast from "../../components/common/Toast";
+import apiClient from "../../api/client";
 
 const ForgotPasswordPage = () => {
   const [email, setEmail]     = useState("");
@@ -13,20 +14,11 @@ const ForgotPasswordPage = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/api/v1/auth/forgot-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setSent(true);
-        setToast({ message: data.message || "Reset link sent!", type: "success" });
-      } else {
-        setToast({ message: data.message || "An error occurred.", type: "error" });
-      }
-    } catch {
-      setToast({ message: "Network error. Please try again.", type: "error" });
+      const res = await apiClient.post("/auth/forgot-password", { email });
+      setSent(true);
+      setToast({ message: res?.message || "Reset link sent!", type: "success" });
+    } catch (err) {
+      setToast({ message: err?.response?.data?.message || err?.message || "An error occurred.", type: "error" });
     } finally {
       setLoading(false);
     }

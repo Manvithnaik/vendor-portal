@@ -28,4 +28,9 @@ export const quoteService = {
   myQuotes: async () => {
     return await apiClient.get('/vendor/my-quotes');
   },
+
+  /** Update a previously submitted quote (only while status=submitted) */
+  updateQuote: async (quoteId, data) => {
+    return await apiClient.patch(`/vendor/quotes/${quoteId}`, data);
+  },
 };

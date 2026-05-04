@@ -6,9 +6,10 @@ import DetailDrawer from '../../components/common/DetailDrawer';
 import Pagination from '../../components/common/Pagination';
 import Toast from '../../components/common/Toast';
 import RatingModal from '../../components/common/RatingModal';
-import { FileText, ExternalLink, Star, ChevronRight } from 'lucide-react';
+import { FileText, ExternalLink, Star, ChevronRight, Package } from 'lucide-react';
 import { toAbsUrl } from '../../utils/url';
 import { getProductSummary } from '../../utils/orderUtils';
+import { getFullImageUrl } from '../../utils/imageUtils';
 
 const PAGE_SIZE = 15;
 
@@ -54,7 +55,7 @@ const PurchaseOrders = () => {
         {/* Details */}
         <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
           {[
-            ['Vendor Org',    o.customer_org_code  || `Org #${o.customer_org_id}`],
+            ['Vendor Org',    o.buyer_org_code  || `Org #${o.buyer_org_id}`],
             ['Amount',        `₹${parseFloat(o.total_amount||0).toLocaleString('en-IN')}`],
             ['Priority',      o.priority],
             ['Date',          o.created_at ? new Date(o.created_at).toLocaleDateString() : '—'],
@@ -95,6 +96,7 @@ const PurchaseOrders = () => {
               <table className="w-full text-xs">
                 <thead className="bg-surface-100 text-brand-500 border-b border-surface-200">
                   <tr>
+                    <th className="px-3 py-2 text-left font-semibold w-12"></th>
                     <th className="px-3 py-2 text-left font-semibold">Product</th>
                     <th className="px-3 py-2 text-left font-semibold">Qty</th>
                     <th className="px-3 py-2 text-left font-semibold">Unit Price</th>
@@ -103,6 +105,22 @@ const PurchaseOrders = () => {
                 <tbody className="divide-y divide-surface-200">
                   {o.items.map((item, idx) => (
                     <tr key={idx}>
+                      <td className="px-3 py-2">
+                        {item.image_url ? (
+                          <img
+                            src={item.image_url}
+                            alt={item.product_name || 'Product'}
+                            className="w-10 h-10 object-cover rounded-md border border-surface-200 bg-surface-100"
+                            onError={e => { e.currentTarget.style.display='none'; e.currentTarget.nextSibling.style.display='flex'; }}
+                          />
+                        ) : null}
+                        <div
+                          className="w-10 h-10 rounded-md border border-surface-200 bg-surface-100 items-center justify-center text-brand-300"
+                          style={{ display: item.image_url ? 'none' : 'flex' }}
+                        >
+                          <Package size={16} />
+                        </div>
+                      </td>
                       <td className="px-3 py-2 font-medium text-brand-800">{item.product_name || `Product #${item.product_id}`}</td>
                       <td className="px-3 py-2 text-brand-600">{item.quantity} {item.unit || ''}</td>
                       <td className="px-3 py-2 text-brand-600">₹{parseFloat(item.unit_price||0).toLocaleString('en-IN')}</td>
@@ -166,9 +184,27 @@ const PurchaseOrders = () => {
             <tbody className="divide-y divide-surface-200">
               {paginated.map(o => (
                 <tr key={o.id} onClick={() => setSelectedOrder(o)} className="row-clickable border-l-2 border-transparent hover:border-l-brand-500">
-                  <td className="px-5 py-4 font-semibold text-brand-900">{getProductSummary(o)}</td>
+                <td className="px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-surface-100 flex-shrink-0 border border-surface-200">
+                      {o.items?.[0]?.image_url ? (
+                        <img
+                          src={getFullImageUrl(o.items[0].image_url)}
+                          alt={o.items[0].product_name || 'Product'}
+                          className="w-full h-full object-cover"
+                          onError={e => { e.currentTarget.style.display = 'none'; }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Package size={18} className="text-brand-300" />
+                        </div>
+                      )}
+                    </div>
+                    <span className="font-semibold text-brand-900 text-sm">{getProductSummary(o)}</span>
+                  </div>
+                </td>
                   <td className="px-5 py-4 font-mono text-xs text-brand-500">{o.order_number}</td>
-                  <td className="px-5 py-4 font-medium text-brand-800">{o.customer_org_code || `Org #${o.customer_org_id}`}</td>
+                  <td className="px-5 py-4 font-medium text-brand-800">{o.buyer_org_code || `Org #${o.buyer_org_id}`}</td>
                   <td className="px-5 py-4 font-medium text-brand-700">₹{parseFloat(o.total_amount||0).toLocaleString('en-IN')}</td>
                   <td className="px-5 py-4"><StatusBadge status={o.status} /></td>
                   <td className="px-5 py-4 text-brand-400 text-xs">{o.created_at ? new Date(o.created_at).toLocaleDateString() : '—'}</td>

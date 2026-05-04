@@ -110,6 +110,12 @@ class OrderItem(Base):
     def product_name(self):
         return self.product.name if self.product else None
 
+    @property
+    def image_url(self):
+        if self.product and self.product.specifications:
+            return self.product.specifications.get('image_url')
+        return None
+
 
 class OrderStatusHistory(Base):
     __tablename__ = "order_status_history"
