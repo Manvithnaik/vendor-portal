@@ -8,13 +8,21 @@ const SESSION_KEY = 'vh_session'; // { role, org_id, org_type, full_name, email 
 
 const saveSession = (data) => {
   try {
+    const role = data.role === 'superadmin' ? 'admin' : data.role;
+    const access_level = data.access_level !== undefined 
+      ? data.access_level 
+      : (data.role === 'superadmin' ? 2 : (data.role === 'admin' ? 1 : 0));
+
     localStorage.setItem(SESSION_KEY, JSON.stringify({
-      role:      data.role,
-      org_id:    data.org_id,
-      org_type:  data.org_type,
-      full_name: data.full_name,
-      email:     data.email,
-      user_id:   data.user_id || data.id,
+      role,
+      org_id:       data.org_id,
+      org_code:     data.org_code,
+      org_name:     data.org_name,
+      org_type:     data.org_type,
+      full_name:    data.full_name || data.name,
+      email:        data.email,
+      user_id:      data.user_id || data.id || data.admin_id,
+      access_level,
     }));
   } catch (_) { /* storage unavailable */ }
 };
@@ -56,8 +64,8 @@ export const AuthProvider = ({ children }) => {
     setUser(session);
 
     // Admins have type:'admin' tokens — /auth/me rejects them with 401.
-    // For admins, trust the stored session (set at login time) and skip /auth/me.
-    if (session.role === 'admin') {
+    // For admins/superadmins, trust the stored session and skip /auth/me.
+    if (session.role === 'admin' || session.role === 'superadmin') {
       setLoading(false);
       return;
     }
@@ -86,14 +94,21 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => { initAuth(); }, [initAuth]);
 
-  const login = async (email, password, role) => {
+  const login = async (email, password) => {
     try {
-      const result = await authService.login(email, password, role);
+      const result = await authService.login(email, password);
       if (result && result.data && result.data.access_token) {
         const userData = result.data;
         saveSession(userData);   // persist role, org_id, org_type, full_name
-        setUser(userData);
-        return { success: true, user: userData };
+        
+        // Normalize role and ensure access_level in state to match localStorage persistence
+        const sessionUser = {
+          ...userData,
+          role: userData.role === 'superadmin' ? 'admin' : userData.role,
+          access_level: userData.access_level ?? (userData.role === 'superadmin' ? 2 : (userData.role === 'admin' ? 1 : 0))
+        };
+        setUser(sessionUser);
+        return { success: true, user: sessionUser };
       }
       return { success: false, message: result?.message || 'Login failed' };
     } catch (error) {

@@ -5,6 +5,7 @@ rfq_broadcast, quotes, po_negotiations, vendor_payouts, disputes, refunds.
 CRM tables (section 10) are also included at the bottom.
 """
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import (
     BigInteger, Boolean, Column, Date, ForeignKey, Integer,
@@ -29,6 +30,7 @@ class Admin(Base):
     __tablename__ = "admins"
 
     id = Column(Integer, primary_key=True, index=True)
+    admin_code = Column(String(50), unique=True, index=True)
     name = Column(String(150), nullable=False)
     email = Column(String(150), nullable=False, unique=True)
     role = Column(String(50), nullable=False, default="admin")
@@ -146,6 +148,7 @@ class RFQ(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text)
     category_id = Column(Integer, ForeignKey("product_categories.id", ondelete="SET NULL"))
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="SET NULL"))
     location_filter = Column(String(100))
     min_vendor_rating = Column(Numeric(3, 2))
     deadline = Column(TIMESTAMP(timezone=True), nullable=False)
@@ -163,7 +166,12 @@ class RFQ(Base):
 
     org = relationship("Organization", foreign_keys=[org_id])
     category = relationship("ProductCategory", foreign_keys=[category_id])
+    product = relationship("Product", foreign_keys=[product_id])
     broadcasts = relationship("RFQBroadcast", back_populates="rfq", cascade="all, delete-orphan")
+
+    @property
+    def org_name(self) -> Optional[str]:
+        return self.org.name if self.org else None
     quotes = relationship("Quote", back_populates="rfq", cascade="all, delete-orphan")
 
 
@@ -205,11 +213,16 @@ class Quote(Base):
         nullable=False,
         default=QuoteStatusEnum.submitted,
     )  # NEW: submitted → accepted/rejected by manufacturer
+    document_url = Column(String(500))
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
     deleted_at = Column(TIMESTAMP(timezone=True))  # soft-delete; required by rfq_repo filter
 
     rfq = relationship("RFQ", back_populates="quotes")
     manufacturer_org = relationship("Organization", foreign_keys=[manufacturer_org_id])
+
+    @property
+    def manufacturer_org_name(self) -> Optional[str]:
+        return self.manufacturer_org.name if self.manufacturer_org else None
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +292,7 @@ class Dispute(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     order_id = Column(Integer, ForeignKey("orders.id", ondelete="RESTRICT"), nullable=False, index=True)
-    customer_org_id = Column(Integer, ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False)
+    buyer_org_id = Column("customer_org_id", Integer, ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False)
     manufacturer_org_id = Column(
         Integer, ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True
     )
@@ -302,7 +315,7 @@ class Dispute(Base):
     deleted_at = Column(TIMESTAMP(timezone=True))
 
     order = relationship("Order", foreign_keys=[order_id])
-    customer_org = relationship("Organization", foreign_keys=[customer_org_id])
+    buyer_org = relationship("Organization", foreign_keys=[buyer_org_id])
     manufacturer_org = relationship("Organization", foreign_keys=[manufacturer_org_id])
     mediator = relationship("Admin", foreign_keys=[mediator_id])
     raiser = relationship("User", foreign_keys=[raised_by])

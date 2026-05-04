@@ -39,7 +39,7 @@ class ShipmentService:
             shipment_number=shipment_number,
             order_id=data.order_id,
             manufacturer_org_id=order.manufacturer_org_id,
-            customer_org_id=order.customer_org_id,
+            buyer_org_id=order.buyer_org_id,
             is_partial=data.is_partial,
             origin_logistics_id=data.origin_logistics_id,
             carrier=data.carrier,

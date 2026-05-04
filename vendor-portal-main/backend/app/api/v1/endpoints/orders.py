@@ -37,7 +37,7 @@ def create_order(
 @router.get("", response_model=APIResponse)
 def list_orders(
     org_id: int = None,
-    as_customer: bool = True,
+    as_buyer: bool = True,
     status: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
@@ -47,17 +47,17 @@ def list_orders(
     from app.models.enums import OrgTypeEnum
     svc = OrderService(db)
 
-    # STRICT ISOLATION
-    if current_user.organization.org_type == OrgTypeEnum.manufacturer: # Vendor
+    # Strict isolation: org_type DB values are 'manufacturer' (vendor) and 'customer' (buyer)
+    if current_user.organization.org_type == OrgTypeEnum.manufacturer:  # Vendor/Supplier
         target_org = current_user.org_id
-        as_customer = False
-    elif current_user.organization.org_type == OrgTypeEnum.customer: # Manufacturer
+        as_buyer = False
+    elif current_user.organization.org_type == OrgTypeEnum.customer:    # Buyer/Manufacturer-in-UI
         target_org = current_user.org_id
-        as_customer = True
+        as_buyer = True
     else:
         target_org = org_id if org_id else current_user.org_id
 
-    orders = svc.list_by_org(target_org, as_customer, status, skip, limit)
+    orders = svc.list_by_org(target_org, as_buyer, status, skip, limit)
     return success_response("Orders retrieved.", [OrderResponse.model_validate(o) for o in orders])
 
 

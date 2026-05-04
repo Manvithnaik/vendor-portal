@@ -1,10 +1,10 @@
 import apiClient from '../api/client';
 
 export const authService = {
-  login: async (email, password, role) => {
-    const endpoint = role === 'admin' ? '/auth/admin/login' : '/auth/login';
+  login: async (email, password) => {
+    const endpoint = '/auth/login';
     // response IS the full APIResponse: { status, message, data: { access_token, user_id, ... } }
-    const response = await apiClient.post(endpoint, { email, password, role });
+    const response = await apiClient.post(endpoint, { email, password });
 
     // Backend returns access_token (not 'token')
     if (response?.data?.access_token) {
@@ -26,7 +26,27 @@ export const authService = {
     return response;
   },
 
+  getApplicationStatus: async (email) => {
+    const response = await apiClient.get(`/auth/application/status?email=${encodeURIComponent(email)}`);
+    return response;
+  },
+
   logout: () => {
     localStorage.removeItem('token');
+  },
+
+  changeAdminPassword: async (current_password, new_password, confirm_new_password) => {
+    const response = await apiClient.post('/auth/admin/change-password', { current_password, new_password, confirm_new_password });
+    return response;
+  },
+
+  verifyAdminInvite: async (token) => {
+    const response = await apiClient.get(`/auth/admin/verify-invite?token=${token}`);
+    return response;
+  },
+
+  setupAdminPassword: async (token, new_password, confirm_password) => {
+    const response = await apiClient.post(`/auth/admin/setup-password?token=${token}`, { new_password, confirm_password });
+    return response;
   }
 };

@@ -1,6 +1,6 @@
 import apiClient from '../api/client';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api/v1';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
 
 export const uploadService = {
   /**
@@ -30,5 +30,29 @@ export const uploadService = {
 
     // json is APIResponse: { status, message, data: { file_url, file_name } }
     return json.data; // { file_url, file_name }
+  },
+
+  /**
+   * Upload an image (e.g. for product, evidence).
+   * Returns { file_url, file_name } from the backend.
+   */
+  uploadImage: async (file) => {
+    const token = localStorage.getItem('token');
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_BASE}/uploads/image`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    const json = await response.json();
+    if (!response.ok) {
+      throw new Error(json?.message || json?.detail || 'Image upload failed');
+    }
+    return json.data;
   },
 };

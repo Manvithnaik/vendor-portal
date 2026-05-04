@@ -10,13 +10,13 @@ class ContractRepository(BaseRepository[Contract]):
         super().__init__(Contract, db)
 
     def get_active_contract(
-        self, customer_org_id: int, manufacturer_org_id: int
+        self, buyer_org_id: int, manufacturer_org_id: int
     ) -> Optional[Contract]:
         """Return the single active contract between two orgs (enforced at DB level too)."""
         return (
             self.db.query(Contract)
             .filter(
-                Contract.customer_org_id == customer_org_id,
+                Contract.buyer_org_id == buyer_org_id,
                 Contract.manufacturer_org_id == manufacturer_org_id,
                 Contract.status == ContractStatusEnum.active,
             )
@@ -24,11 +24,11 @@ class ContractRepository(BaseRepository[Contract]):
         )
 
     def get_by_org(self, org_id: int) -> List[Contract]:
-        """Return all contracts where the org is either the customer or manufacturer."""
+        """Return all contracts where the org is either the buyer or manufacturer."""
         return (
             self.db.query(Contract)
             .filter(
-                (Contract.customer_org_id == org_id)
+                (Contract.buyer_org_id == org_id)
                 | (Contract.manufacturer_org_id == org_id)
             )
             .all()

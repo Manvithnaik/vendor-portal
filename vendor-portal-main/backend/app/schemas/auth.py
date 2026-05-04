@@ -13,7 +13,6 @@ FrontendRole = Literal["vendor", "manufacturer", "admin"]
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
-    role: FrontendRole
 
 
 class RegisterRequest(BaseModel):
@@ -36,17 +35,64 @@ class RegisterRequest(BaseModel):
     country: Optional[str] = None
     postal_code: Optional[str] = None
     website: Optional[str] = None
+    
+    # Newly added fields to ensure registration data is captured
+    industry_type: Optional[str] = None
+    factory_address: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    signatory_name: Optional[str] = None
+    signatory_phone: Optional[str] = None
+    
+    # Manufacturer specific
+    gst_number: Optional[str] = None
+    business_license: Optional[str] = None
+    annual_turnover: Optional[str] = None
 
     # User-level details
     first_name: str
     last_name: str
     user_phone: Optional[str] = None
 
+    # Document details
+    business_doc: Optional[str] = None
+    business_doc_data: Optional[str] = None
+
     @field_validator("confirm_password")
     @classmethod
     def passwords_match(cls, v, info):
         if "password" in info.data and v != info.data["password"]:
             raise ValueError("Passwords do not match")
+        return v
+
+    @field_validator("business_doc")
+    @classmethod
+    def validate_doc_extension(cls, v):
+        if v:
+            lower_v = v.lower()
+            if not (lower_v.endswith(".pdf") or lower_v.endswith(".doc") or lower_v.endswith(".docx")):
+                raise ValueError("Invalid file format. Only PDF, DOC, and DOCX formats are accepted for business documents.")
+        return v
+
+    @field_validator("business_doc_data")
+    @classmethod
+    def validate_doc_mime(cls, v):
+        if v:
+            valid_mimes = [
+                "application/pdf",
+                "application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ]
+            if v.startswith("data:"):
+                try:
+                    mime = v.split(";")[0].replace("data:", "")
+                    if mime not in valid_mimes:
+                        raise ValueError("Invalid file format. Only PDF, DOC, and DOCX formats are accepted for business documents.")
+                except Exception:
+                    raise ValueError("Invalid file format. Only PDF, DOC, and DOCX formats are accepted for business documents.")
+            else:
+                raise ValueError("Invalid file format. Only PDF, DOC, and DOCX formats are accepted for business documents.")
         return v
 
 
@@ -62,6 +108,8 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     user_id: int
     org_id: int
+    org_code: Optional[str] = None
+    org_name: Optional[str] = None
     role: str
     org_type: str
     full_name: str
@@ -78,6 +126,44 @@ class AdminTokenResponse(BaseModel):
 
 
 class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_new_password: str
+
+    @field_validator("confirm_new_password")
+    @classmethod
+    def passwords_match(cls, v, info):
+        if "new_password" in info.data and v != info.data["new_password"]:
+            raise ValueError("Passwords do not match")
+        return v
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class AdminSetPasswordRequest(BaseModel):
+    new_password: str
+    confirm_password: str
+
+    @field_validator("confirm_password")
+    @classmethod
+    def passwords_match(cls, v, info):
+        if "new_password" in info.data and v != info.data["new_password"]:
+            raise ValueError("Passwords do not match")
+        return v
+
+
+class AdminCreateRequest(BaseModel):
+    name: str
+    email: EmailStr
+
+
+class AdminChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
     confirm_new_password: str

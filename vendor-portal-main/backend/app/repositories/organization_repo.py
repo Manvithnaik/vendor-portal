@@ -9,6 +9,18 @@ class OrganizationRepository(BaseRepository[Organization]):
     def __init__(self, db: Session):
         super().__init__(Organization, db)
 
+    def get(self, record_id: int) -> Optional[Organization]:
+        from sqlalchemy.orm import joinedload
+        return (
+            self.db.query(Organization)
+            .options(
+                joinedload(Organization.financial_details),
+                joinedload(Organization.verification_certificates)
+            )
+            .filter(Organization.id == record_id, Organization.deleted_at.is_(None))
+            .first()
+        )
+
     def get_by_email(self, email: str) -> Optional[Organization]:
         return (
             self.db.query(Organization)

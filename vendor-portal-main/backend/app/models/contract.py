@@ -18,7 +18,7 @@ class Contract(Base):
     __tablename__ = "contracts"
 
     id = Column(Integer, primary_key=True, index=True)
-    customer_org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    buyer_org_id = Column("customer_org_id", Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     manufacturer_org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
     contract_number = Column(String(100), nullable=False, unique=True)
     name = Column(String(255))
@@ -44,8 +44,8 @@ class Contract(Base):
     updated_at = Column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
 
     # Relationships
-    customer_org = relationship(
-        "Organization", back_populates="contracts_as_customer", foreign_keys=[customer_org_id]
+    buyer_org = relationship(
+        "Organization", back_populates="contracts_as_buyer", foreign_keys=[buyer_org_id]
     )
     manufacturer_org = relationship(
         "Organization", back_populates="contracts_as_manufacturer", foreign_keys=[manufacturer_org_id]
