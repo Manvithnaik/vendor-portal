@@ -149,10 +149,10 @@ export const orderApi = {
 
   /**
    * List orders for the current org.
-   * GET /orders?as_customer=true|false&status=...
+   * GET /orders?as_buyer=true|false&status=...
    */
-  list: ({ as_customer = true, status } = {}) => {
-    const params = new URLSearchParams({ as_customer });
+  list: ({ as_buyer = true, status } = {}) => {
+    const params = new URLSearchParams({ as_buyer });
     if (status) params.set('status', status);
     return get(`/orders?${params}`);
   },

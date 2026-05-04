@@ -477,6 +477,20 @@ class AuthService:
         # If rejected, provide some basic pre-fill data for resubmission
         if org.verification_status == VerifyStatusEnum.rejected:
             user = self.user_repo.get_by_email(email)
+            # Pull rejection reason from the most recent audit log entry
+            rejection_reason = None
+            try:
+                from app.models.vendor_portal import AuditLog
+                from sqlalchemy import desc
+                log = self.db.query(AuditLog).filter(
+                    AuditLog.entity_type == "organization",
+                    AuditLog.entity_id == org.id,
+                    AuditLog.action == "rejected"
+                ).order_by(desc(AuditLog.changed_at)).first()
+                if log and log.new_values:
+                    rejection_reason = log.new_values.get("reason") or log.new_values.get("rejection_reason")
+            except Exception:
+                pass
             result.update({
                 "org_name": org.name,
                 "phone": org.phone,
@@ -488,10 +502,12 @@ class AuthService:
                 "website": org.website,
                 "first_name": user.first_name if user else "",
                 "last_name": user.last_name if user else "",
-                "user_phone": user.phone if user else ""
+                "user_phone": user.phone if user else "",
+                "rejection_reason": rejection_reason,
             })
             
         return result
+
 
     def change_password(self, user_id: int, data: PasswordChangeRequest) -> None:
         """

@@ -84,7 +84,10 @@ def update_verification(
 ):
     """Admin-only: approve or reject an organization's application."""
     svc = OrganizationService(db)
-    org = svc.update_verification_status(org_id, status, current_admin.id)
+    org = svc.update_verification_status(
+        org_id, status, current_admin.id,
+        reason=body.reason if body else None
+    )
     
     if body and body.action in ["approved", "rejected", "resubmit"]:
         user_type = "Vendor" if org.org_type.value == "manufacturer" else "Manufacturer"

@@ -100,11 +100,17 @@ const ApplicationStatusPage = () => {
               </div>
               <h1 className="font-display font-bold text-2xl text-brand-900 mb-2">Application Rejected</h1>
               <p className="text-brand-600 font-medium mb-2">
-                Your application was rejected. Please resubmit.
+                Your application was not approved.
               </p>
-              <p className="text-brand-500 mb-6 text-sm">
+              <p className="text-brand-500 mb-4 text-sm">
                 We've reviewed your application for <span className="font-semibold text-brand-700">{email}</span> and unfortunately it was rejected. You can update your details and resubmit.
               </p>
+              {statusData?.rejection_reason && (
+                <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-left">
+                  <p className="text-xs font-bold text-red-500 uppercase tracking-widest mb-1">Reason for Rejection</p>
+                  <p className="text-sm text-red-800">{statusData.rejection_reason}</p>
+                </div>
+              )}
               <div className="flex flex-col gap-3">
                 <Link to={`/register/${role}?email=${encodeURIComponent(email)}&resubmit=true`} className="btn-primary w-full justify-center bg-red-600 hover:bg-red-700 border-red-600">
                   Resubmit Application

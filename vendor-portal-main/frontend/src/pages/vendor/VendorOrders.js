@@ -8,11 +8,15 @@ import StatusBadge from '../../components/common/StatusBadge';
 import DetailDrawer from '../../components/common/DetailDrawer';
 import Toast from '../../components/common/Toast';
 import Modal from '../../components/common/Modal';
+import Pagination from '../../components/common/Pagination';
+import { getFullImageUrl } from '../../utils/imageUtils';
 import {
   CheckCircle, XCircle, FileText, Package,
   ShoppingCart, Clock, ExternalLink, ChevronRight
 } from 'lucide-react';
 import { toAbsUrl } from '../../utils/url';
+
+const PAGE_SIZE = 10;
 
 // ── Tab ─────────────────────────────────────────────────────────────
 const Tab = ({ active, onClick, icon: Icon, label, count }) => (
@@ -47,6 +51,8 @@ const VendorOrders = () => {
   const [rfqs, setRfqs]       = useState([]);
   const [myQuotes, setMyQuotes] = useState([]);
   const [toast, setToast]     = useState(null);
+  const [ordersPage, setOrdersPage] = useState(1);
+  const [rfqsPage, setRfqsPage]     = useState(1);
 
   // Drawer state
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -57,15 +63,16 @@ const VendorOrders = () => {
   const [rejectReason, setRejectReason] = useState('');
 
   // Quote submit modal
-  const [quoteRFQ, setQuoteRFQ]     = useState(null);
-  const [quoteForm, setQuoteForm]   = useState({ price: '', lead_time_days: '', compliance_notes: '', document: null });
-  const [quoteError, setQuoteError] = useState('');
+  const [quoteRFQ, setQuoteRFQ]         = useState(null);
+  const [editingQuoteId, setEditingQuoteId] = useState(null);  // null = new, number = update
+  const [quoteForm, setQuoteForm]       = useState({ price: '', lead_time_days: '', compliance_notes: '', document: null });
+  const [quoteError, setQuoteError]     = useState('');
   const [submittingQuote, setSubmittingQuote] = useState(false);
 
   const load = async () => {
     try {
       const [orderRes, rfqRes, quoteRes] = await Promise.all([
-        orderService.listOrders({ as_customer: false }),
+        orderService.listOrders({ as_buyer: false }),
         rfqService.listRFQs(),
         quoteService.myQuotes(),
       ]);
@@ -114,6 +121,7 @@ const VendorOrders = () => {
   // ── Quote submit ──────────────────────────────────────────────────
   const resetQuoteModal = () => {
     setQuoteRFQ(null);
+    setEditingQuoteId(null);
     setQuoteForm({ price: '', lead_time_days: '', compliance_notes: '', document: null });
     setQuoteError('');
   };
@@ -124,21 +132,37 @@ const VendorOrders = () => {
     const lead  = parseInt(quoteForm.lead_time_days, 10);
     if (!price || price <= 0)  { setQuoteError('Enter a valid price.'); return; }
     if (!lead  || lead  <= 0)  { setQuoteError('Enter a valid lead time (days).'); return; }
-    if (!quoteForm.document)   { setQuoteError('You must upload a quotation document (PDF).'); return; }
+    // Document required only when creating new; editing can reuse existing
+    if (!editingQuoteId && !quoteForm.document) { setQuoteError('You must upload a quotation document (PDF).'); return; }
 
     setSubmittingQuote(true);
-    let document_url = '';
-    try {
-      const up = await uploadService.uploadPODocument(quoteForm.document);
-      document_url = up.file_url;
-    } catch (err) {
-      setQuoteError('Failed to upload document. ' + (err.message || ''));
-      setSubmittingQuote(false);
-      return;
+    let document_url = quoteForm.existingDocumentUrl || '';
+    if (quoteForm.document) {
+      try {
+        const up = await uploadService.uploadPODocument(quoteForm.document);
+        document_url = up.file_url;
+      } catch (err) {
+        setQuoteError('Failed to upload document. ' + (err.message || ''));
+        setSubmittingQuote(false);
+        return;
+      }
     }
     try {
-      await quoteService.submitQuote({ rfq_id: quoteRFQ.id, price, lead_time_days: lead, compliance_notes: quoteForm.compliance_notes || null, document_url });
-      setToast({ message: 'Quotation submitted successfully!', type: 'success' });
+      if (editingQuoteId) {
+        // Update existing quote
+        await quoteService.updateQuote(editingQuoteId, {
+          rfq_id: quoteRFQ.id,
+          price,
+          lead_time_days: lead,
+          compliance_notes: quoteForm.compliance_notes || null,
+          document_url: document_url || quoteForm.existingDocumentUrl,
+        });
+        setToast({ message: 'Quotation updated successfully!', type: 'success' });
+      } else {
+        // Submit new quote
+        await quoteService.submitQuote({ rfq_id: quoteRFQ.id, price, lead_time_days: lead, compliance_notes: quoteForm.compliance_notes || null, document_url });
+        setToast({ message: 'Quotation submitted successfully!', type: 'success' });
+      }
       resetQuoteModal();
       load();
     } catch (error) {
@@ -199,6 +223,39 @@ const VendorOrders = () => {
             </div>
           )}
         </dl>
+
+        {/* Line Items */}
+        {o.items && o.items.length > 0 && (
+          <div>
+            <p className="text-xs font-bold text-brand-400 uppercase tracking-widest mb-3 pb-2 border-b border-surface-200">
+              Items ({o.items.length})
+            </p>
+            <div className="space-y-2">
+              {o.items.map((item, idx) => (
+                <div key={idx} className="flex items-center gap-3 p-2 bg-surface-50 border border-surface-200 rounded-lg">
+                  {item.image_url ? (
+                    <img
+                      src={item.image_url}
+                      alt={item.product_name || 'Product'}
+                      className="w-11 h-11 object-cover rounded-md border border-surface-200 flex-shrink-0"
+                      onError={e => { e.currentTarget.style.display='none'; e.currentTarget.nextSibling.style.display='flex'; }}
+                    />
+                  ) : null}
+                  <div
+                    className="w-11 h-11 rounded-md border border-surface-200 bg-surface-100 items-center justify-center text-brand-300 flex-shrink-0"
+                    style={{ display: item.image_url ? 'none' : 'flex' }}
+                  >
+                    <Package size={18} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-brand-800 truncate">{item.product_name || `Product #${item.product_id}`}</p>
+                    <p className="text-xs text-brand-400">Qty: {item.quantity}{item.unit ? ` ${item.unit}` : ''} &middot; ₹{parseFloat(item.unit_price||0).toLocaleString('en-IN')}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* PO Document */}
         {o.po_document_url && (
@@ -264,6 +321,18 @@ const VendorOrders = () => {
           <RFQBadge status={rfq.status} />
         </div>
 
+        {/* Product image */}
+        {rfq.product?.image_url && (
+          <div className="rounded-xl overflow-hidden border border-surface-200 bg-surface-50">
+            <img
+              src={rfq.product.image_url}
+              alt={rfq.product.name || rfq.title}
+              className="w-full h-40 object-cover"
+              onError={e => { e.currentTarget.parentElement.style.display = 'none'; }}
+            />
+          </div>
+        )}
+
         <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
           {[
             ['Category', rfq.category?.name],
@@ -306,16 +375,43 @@ const VendorOrders = () => {
         <div className="pt-4 border-t border-surface-200">
           {canQuote ? (
             <button
-              onClick={() => { setSelectedRFQ(null); setQuoteRFQ(rfq); setQuoteForm({ price:'', lead_time_days:'', compliance_notes:'', document:null }); setQuoteError(''); }}
+              onClick={() => { setSelectedRFQ(null); setEditingQuoteId(null); setQuoteRFQ(rfq); setQuoteForm({ price:'', lead_time_days:'', compliance_notes:'', document:null, existingDocumentUrl:'' }); setQuoteError(''); }}
               className="btn-accent w-full justify-center"
             >
               <FileText size={15} /> Submit Quotation
             </button>
-          ) : alreadyQuoted ? (
-            <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm font-medium">
-              <CheckCircle size={15} /> Quotation already submitted
-            </div>
-          ) : (
+          ) : alreadyQuoted ? (() => {
+            // Find the existing quote for this RFQ
+            const existingQuote = myQuotes.find(q => q.rfq_id === rfq.id);
+            const isEditable = existingQuote && existingQuote.status === 'submitted';
+            return (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm font-medium">
+                  <CheckCircle size={15} /> Quotation submitted (Quote #{existingQuote?.id})
+                </div>
+                {isEditable && (
+                  <button
+                    onClick={() => {
+                      setSelectedRFQ(null);
+                      setEditingQuoteId(existingQuote.id);
+                      setQuoteRFQ(rfq);
+                      setQuoteForm({
+                        price: String(existingQuote.price || ''),
+                        lead_time_days: String(existingQuote.lead_time_days || ''),
+                        compliance_notes: existingQuote.compliance_notes || '',
+                        document: null,
+                        existingDocumentUrl: existingQuote.document_url || '',
+                      });
+                      setQuoteError('');
+                    }}
+                    className="btn-secondary w-full justify-center text-sm"
+                  >
+                    <FileText size={14} /> Edit &amp; Update Quote
+                  </button>
+                )}
+              </div>
+            );
+          })() : (
             <div className="badge badge-rejected">RFQ is {rfq.status}</div>
           )}
         </div>
@@ -335,8 +431,8 @@ const VendorOrders = () => {
 
       <div className="card overflow-hidden">
         <div className="flex border-b border-surface-200 overflow-x-auto">
-          <Tab active={tab==='orders'} onClick={() => setTab('orders')} icon={ShoppingCart} label="Purchase Orders" count={pendingOrderCount} />
-          <Tab active={tab==='rfqs'}   onClick={() => setTab('rfqs')}   icon={FileText}     label="RFQ Requests"   count={activeRFQCount} />
+          <Tab active={tab==='orders'} onClick={() => { setTab('orders'); setOrdersPage(1); }} icon={ShoppingCart} label="Purchase Orders" count={pendingOrderCount} />
+          <Tab active={tab==='rfqs'}   onClick={() => { setTab('rfqs');   setRfqsPage(1);  }} icon={FileText}     label="RFQ Requests"   count={activeRFQCount} />
         </div>
 
         {/* ── Orders Tab ── */}
@@ -354,9 +450,27 @@ const VendorOrders = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-200">
-                {orders.map(o => (
+                {orders.slice((ordersPage - 1) * PAGE_SIZE, ordersPage * PAGE_SIZE).map(o => (
                   <tr key={o.id} onClick={() => setSelectedOrder(o)} className="row-clickable border-l-2 border-transparent hover:border-l-brand-500">
-                    <td className="px-5 py-4 font-mono text-xs text-brand-600 font-semibold">{o.order_number}</td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-surface-100 flex-shrink-0 border border-surface-200">
+                          {o.items?.[0]?.image_url ? (
+                            <img
+                              src={getFullImageUrl(o.items[0].image_url)}
+                              alt={o.items[0]?.product_name || 'Product'}
+                              className="w-full h-full object-cover"
+                              onError={e => { e.currentTarget.style.display = 'none'; }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <Package size={18} className="text-brand-300" />
+                            </div>
+                          )}
+                        </div>
+                        <span className="font-mono text-xs text-brand-600 font-semibold">{o.order_number}</span>
+                      </div>
+                    </td>
                     <td className="px-5 py-4 font-medium text-brand-800">{o.manufacturer_org_code || `Org #${o.manufacturer_org_id}`}</td>
                     <td className="px-5 py-4 text-brand-700 font-medium">₹{parseFloat(o.total_amount||0).toLocaleString('en-IN')}</td>
                     <td className="px-5 py-4"><StatusBadge status={o.status} /></td>
@@ -369,6 +483,7 @@ const VendorOrders = () => {
                 )}
               </tbody>
             </table>
+            <Pagination total={orders.length} page={ordersPage} pageSize={PAGE_SIZE} onPageChange={setOrdersPage} />
           </div>
         )}
 
@@ -386,13 +501,31 @@ const VendorOrders = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-200">
-                {rfqs.map(rfq => (
+                {rfqs.slice((rfqsPage - 1) * PAGE_SIZE, rfqsPage * PAGE_SIZE).map(rfq => (
                   <tr key={rfq.id} onClick={() => setSelectedRFQ(rfq)} className="row-clickable border-l-2 border-transparent hover:border-l-brand-500">
                     <td className="px-5 py-4">
-                      <p className="font-semibold text-brand-900">{rfq.title}</p>
-                      {myQuotes.some(q => q.rfq_id === rfq.id) && (
-                        <span className="text-xs text-green-600 font-medium flex items-center gap-1 mt-0.5"><CheckCircle size={11} />Quoted</span>
-                      )}
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-surface-100 flex-shrink-0 border border-surface-200">
+                          {rfq.product?.image_url ? (
+                            <img
+                              src={getFullImageUrl(rfq.product.image_url)}
+                              alt={rfq.product?.name || rfq.title}
+                              className="w-full h-full object-cover"
+                              onError={e => { e.currentTarget.style.display = 'none'; }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <Package size={18} className="text-brand-300" />
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-brand-900">{rfq.title}</p>
+                          {myQuotes.some(q => q.rfq_id === rfq.id) && (
+                            <span className="text-xs text-green-600 font-medium flex items-center gap-1 mt-0.5"><CheckCircle size={11} />Quoted</span>
+                          )}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-5 py-4 text-brand-500">{rfq.category?.name || '—'}</td>
                     <td className="px-5 py-4"><RFQBadge status={rfq.status} /></td>
@@ -405,6 +538,7 @@ const VendorOrders = () => {
                 )}
               </tbody>
             </table>
+            <Pagination total={rfqs.length} page={rfqsPage} pageSize={PAGE_SIZE} onPageChange={setRfqsPage} />
           </div>
         )}
       </div>
@@ -462,14 +596,19 @@ const VendorOrders = () => {
         )}
       </Modal>
 
-      {/* Submit Quote Modal */}
-      <Modal open={!!quoteRFQ} onClose={resetQuoteModal} title="Submit Quotation" size="lg">
+      {/* Submit / Edit Quote Modal */}
+      <Modal open={!!quoteRFQ} onClose={resetQuoteModal} title={editingQuoteId ? 'Edit Quotation' : 'Submit Quotation'} size="lg">
         {quoteRFQ && (
           <form onSubmit={handleQuoteSubmit} className="space-y-4">
             <div className="p-3 bg-surface-100 rounded-lg">
               <p className="text-xs text-brand-500 mb-1">RFQ Details</p>
               <p className="text-sm font-semibold text-brand-900">{quoteRFQ.title}</p>
               {quoteRFQ.description && <p className="text-xs text-brand-500 mt-1 italic">&ldquo;{quoteRFQ.description.replace(/\[Minimum Expected Rate: .*?\]/, '')}&rdquo;</p>}
+              {editingQuoteId && (
+                <p className="text-xs text-amber-600 font-medium mt-1.5 flex items-center gap-1">
+                  <Clock size={11} /> Editing Quote #{editingQuoteId} — changes will update your existing submission
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -486,18 +625,26 @@ const VendorOrders = () => {
               <textarea className="input-field resize-none h-20" placeholder="Any compliance or delivery conditions..." value={quoteForm.compliance_notes} onChange={e => setQuoteForm({...quoteForm, compliance_notes:e.target.value})} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-brand-700 mb-1.5">Quotation Document / PDF <span className="text-red-500">*</span></label>
+              <label className="block text-sm font-medium text-brand-700 mb-1.5">
+                Quotation Document / PDF
+                {!editingQuoteId && <span className="text-red-500 ml-1">*</span>}
+                {editingQuoteId && quoteForm.existingDocumentUrl && (
+                  <span className="text-xs text-brand-400 font-normal ml-2">
+                    (leave blank to keep existing: <a href={quoteForm.existingDocumentUrl} target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline">current doc</a>)
+                  </span>
+                )}
+              </label>
               <input type="file" accept="application/pdf" className="input-field p-2" onChange={e => setQuoteForm({...quoteForm, document:e.target.files[0]})} />
             </div>
             <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-100 rounded-lg text-xs text-amber-700">
               <Clock size={13} className="mt-0.5 flex-shrink-0" />
-              <span>Once submitted, the manufacturer can view your quote and place an order referencing it.</span>
+              <span>{editingQuoteId ? 'Updating your quote will replace the previous submission visible to the manufacturer.' : 'Once submitted, the manufacturer can view your quote and place an order referencing it.'}</span>
             </div>
             {quoteError && <p className="text-red-600 text-xs">{quoteError}</p>}
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={resetQuoteModal} className="btn-secondary">Cancel</button>
               <button type="submit" className="btn-accent" disabled={submittingQuote}>
-                {submittingQuote ? 'Submitting...' : 'Submit Quotation'}
+                {submittingQuote ? (editingQuoteId ? 'Updating...' : 'Submitting...') : (editingQuoteId ? 'Update Quote' : 'Submit Quotation')}
               </button>
             </div>
           </form>

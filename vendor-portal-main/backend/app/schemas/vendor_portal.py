@@ -48,6 +48,7 @@ class ProductCompact(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
+    image_url: Optional[str] = None
     
     model_config = {"from_attributes": True}
 

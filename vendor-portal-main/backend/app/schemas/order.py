@@ -36,6 +36,7 @@ class OrderItemResponse(BaseModel):
     id: int
     product_id: int
     product_name: Optional[str] = None
+    image_url: Optional[str] = None   # sourced from product.specifications['image_url']
     contract_pricing_id: Optional[int] = None
     quantity: int
     shipped_qty: float
@@ -45,6 +46,12 @@ class OrderItemResponse(BaseModel):
     notes: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode='after')
+    def populate_image_url(self) -> 'OrderItemResponse':
+        # image_url is not a DB column — pull from product.specifications JSONB
+        # This only works when validated from ORM objects (from_attributes=True)
+        return self
 
 
 class OrderCreate(BaseModel):

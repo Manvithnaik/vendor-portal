@@ -4,8 +4,11 @@ import { productService } from '../../services/productService';
 import { uploadService } from '../../services/uploadService';
 import Modal from '../../components/common/Modal';
 import Toast from '../../components/common/Toast';
+import Pagination from '../../components/common/Pagination';
 import { Plus, Edit3, Trash2, Package, ImagePlus, X, AlertCircle } from 'lucide-react';
 import { getFullImageUrl } from '../../utils/imageUtils';
+
+const PAGE_SIZE = 12;
 
 // ── Helper: read File → base64 ───────────────────────────────────────────────
 const readFileAsBase64 = (file) =>
@@ -18,7 +21,7 @@ const readFileAsBase64 = (file) =>
 
 // ── Product card ─────────────────────────────────────────────────────────────
 const ProductCard = ({ p, onEdit, onDelete }) => {
-  const imageUrl = getFullImageUrl(p.specifications?.image || p.image);
+  const imageUrl = getFullImageUrl(p.image_url);
   return (
   <div className="card overflow-hidden hover:shadow-elevated transition-shadow flex flex-col">
     {/* Image / placeholder */}
@@ -61,7 +64,7 @@ const ProductCard = ({ p, onEdit, onDelete }) => {
 };
 
 // ── Empty file form state ────────────────────────────────────────────────────
-const EMPTY_FORM = { name: '', sku: '', description: '', category_id: 1, image: '' };
+const EMPTY_FORM = { name: '', sku: '', description: '', category_id: 1, image_url: '' };
 
 // ── Main Component ───────────────────────────────────────────────────────────
 const VendorProducts = () => {
@@ -72,6 +75,7 @@ const VendorProducts = () => {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [page, setPage] = useState(1);
 
 
   // Image state
@@ -122,21 +126,21 @@ const VendorProducts = () => {
     const objectUrl = URL.createObjectURL(file);
     setImagePreview(objectUrl);
     setImageFile(file);
-    setForm(f => ({ ...f, image: objectUrl }));
+    setForm(f => ({ ...f, image_url: objectUrl }));
   };
 
   const removeImage = () => {
     setImagePreview('');
     setImageError('');
     setImageFile(null);
-    setForm(f => ({ ...f, image: '' }));
+    setForm(f => ({ ...f, image_url: '' }));
     if (imageInputRef.current) imageInputRef.current.value = '';
   };
 
   // ── Open edit modal ──
   const handleEdit = (p) => {
-    const imageUrl = p.specifications?.image || p.image || '';
-    setForm({ name: p.name, sku: p.sku || '', description: p.description || '', category_id: p.category_id || 1, image: imageUrl });
+    const imageUrl = p.image_url || '';
+    setForm({ name: p.name, sku: p.sku || '', description: p.description || '', category_id: p.category_id || 1, image_url: imageUrl });
     setImagePreview(imageUrl);
     setImageFile(null);
     setEditing(p);
@@ -157,7 +161,7 @@ const VendorProducts = () => {
     setSubmitting(true);
     const sku = form.sku.trim() || form.name.trim().toUpperCase().replace(/\s+/g, '-').slice(0, 30) + '-' + Date.now().toString().slice(-4);
     try {
-      let finalImageUrl = form.image; // Assume existing string URL if not overwritten
+      let finalImageUrl = form.image_url; // Assume existing string URL if not overwritten
 
       // Upload if a new file is chosen
       if (imageFile) {
@@ -170,7 +174,7 @@ const VendorProducts = () => {
           name: form.name, 
           description: form.description, 
           category_id: Number(form.category_id),
-          specifications: { ...(editing.specifications || {}), image: finalImageUrl }
+          specifications: { ...(editing.specifications || {}), image_url: finalImageUrl }
         });
         setToast({ message: 'Product updated.', type: 'success' });
       } else {
@@ -180,7 +184,7 @@ const VendorProducts = () => {
           description:         form.description || undefined,
           category_id:         Number(form.category_id),
           manufacturer_org_id: user.org_id,   // injected from auth context
-          specifications:      { image: finalImageUrl }
+          specifications:      { image_url: finalImageUrl }
         });
         setToast({ message: 'Product added.', type: 'success' });
       }
@@ -197,6 +201,7 @@ const VendorProducts = () => {
     try {
       await productService.deleteProduct(id);
       setToast({ message: 'Product deleted.', type: 'success' });
+      setPage(1);
       load();
     } catch (e) {
       setToast({ message: e.message || 'Failed to delete product', type: 'error' });
@@ -222,11 +227,14 @@ const VendorProducts = () => {
 
       {/* Products grid */}
       {products.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {products.map(p => (
-            <ProductCard key={p.id} p={p} onEdit={handleEdit} onDelete={handleDelete} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(p => (
+              <ProductCard key={p.id} p={p} onEdit={handleEdit} onDelete={handleDelete} />
+            ))}
+          </div>
+          <Pagination total={products.length} page={page} pageSize={PAGE_SIZE} onPageChange={setPage} />
+        </>
       ) : (
         <div className="card p-12 text-center">
           <Package size={40} className="text-brand-200 mx-auto mb-3" />

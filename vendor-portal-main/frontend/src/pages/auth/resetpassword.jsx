@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Eye, EyeOff, CheckCircle } from "lucide-react";
 import Toast from "../../components/common/Toast";
+import apiClient from "../../api/client";
 
 const ResetPasswordPage = () => {
   const [searchParams] = useSearchParams();
@@ -22,9 +23,8 @@ const ResetPasswordPage = () => {
     if (!token) { setTokenError("No reset token provided."); setIsValidating(false); return; }
     (async () => {
       try {
-        const res = await fetch(`http://localhost:8000/api/v1/auth/reset-password/validate?token=${token}`);
-        if (!res.ok) setTokenError("Invalid or expired reset token.");
-      } catch { setTokenError("Network error validating token."); }
+        await apiClient.get(`/auth/reset-password/validate?token=${token}`);
+      } catch { setTokenError("Invalid or expired reset token."); }
       finally   { setIsValidating(false); }
     })();
   }, [token]);
@@ -41,21 +41,12 @@ const ResetPasswordPage = () => {
     }
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/api/v1/auth/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, new_password: password }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setSuccess(true);
-        setToast({ message: data.message || "Password changed successfully!", type: "success" });
-        setTimeout(() => navigate("/login"), 2500);
-      } else {
-        setToast({ message: data.message || "An error occurred.", type: "error" });
-      }
-    } catch {
-      setToast({ message: "Network error. Please try again.", type: "error" });
+      const res = await apiClient.post("/auth/reset-password", { token, new_password: password });
+      setSuccess(true);
+      setToast({ message: res?.message || "Password changed successfully!", type: "success" });
+      setTimeout(() => navigate("/login"), 2500);
+    } catch (err) {
+      setToast({ message: err?.message || "An error occurred.", type: "error" });
     } finally {
       setLoading(false);
     }

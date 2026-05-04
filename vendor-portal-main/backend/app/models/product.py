@@ -68,6 +68,12 @@ class Product(Base):
     def vendor_email(self):
         return self.manufacturer_org.email if self.manufacturer_org else None
 
+    @property
+    def image_url(self):
+        if self.specifications:
+            return self.specifications.get('image_url')
+        return None
+
 
 class ProductTag(Base):
     __tablename__ = "product_tags"

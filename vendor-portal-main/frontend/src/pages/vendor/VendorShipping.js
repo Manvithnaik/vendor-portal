@@ -58,7 +58,7 @@ const VendorShipping = () => {
               <tr className="bg-surface-100 text-brand-600">
                 <th className="text-left px-5 py-3 font-medium">Order ID</th>
                 <th className="text-left px-5 py-3 font-medium">Product</th>
-                <th className="text-left px-5 py-3 font-medium">Manufacturer</th>
+                <th className="text-left px-5 py-3 font-medium">Buyer (Manufacturer)</th>
                 <th className="text-left px-5 py-3 font-medium">Qty</th>
                 <th className="text-left px-5 py-3 font-medium">Status</th>
                 <th className="text-right px-5 py-3 font-medium">Update Status</th>
@@ -69,7 +69,7 @@ const VendorShipping = () => {
                 <tr key={o.id} className="hover:bg-surface-50 transition-colors">
                   <td className="px-5 py-3 font-mono text-xs text-brand-500">{o.order_number || o.id}</td>
                   <td className="px-5 py-3 font-medium text-brand-800">{o.product_name}</td>
-                  <td className="px-5 py-3 text-brand-500">{o.customer_name}</td>
+                  <td className="px-5 py-3 text-brand-500">{o.buyer_name || '—'}</td>
                   <td className="px-5 py-3 text-brand-600">{o.quantity}</td>
                   <td className="px-5 py-3"><StatusBadge status={o.status} /></td>
                   <td className="px-5 py-3">

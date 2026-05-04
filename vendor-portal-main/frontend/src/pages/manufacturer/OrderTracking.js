@@ -4,6 +4,7 @@ import { orderService } from '../../services/orderService';
 import Toast from '../../components/common/Toast';
 import { Package, Clock, CheckCircle, Truck, MapPin, Calendar, Info, Box, ChevronRight, X, Search } from 'lucide-react';
 import { getProductSummary } from '../../utils/orderUtils';
+import { getFullImageUrl } from '../../utils/imageUtils';
 
 const analyzeOrderData = (order) => {
   // 1. Identify ID
@@ -162,13 +163,30 @@ const StatusBadge = ({ status }) => {
 /* --- LAYER 1: COMPACT ROW --- */
 const OrderRow = ({ order, onClick }) => {
   const data = analyzeOrderData(order);
-  
+  const imgUrl = order.items?.[0]?.image_url;
+
   return (
-    <div 
+    <div
       onClick={onClick}
-      className="flex items-center justify-between px-5 py-3.5 bg-white border border-surface-200 hover:border-accent-300 hover:shadow-md cursor-pointer transition-all duration-200 rounded-lg group mb-2.5 min-h-[64px] max-h-[80px]"
+      className="flex items-center justify-between px-5 py-3.5 bg-white border border-surface-200 hover:border-accent-300 hover:shadow-md cursor-pointer transition-all duration-200 rounded-lg group mb-2.5 min-h-[64px]"
     >
-      <div className="flex items-center gap-6 flex-1 overflow-hidden">
+      <div className="flex items-center gap-4 flex-1 overflow-hidden">
+        {/* Product Thumbnail */}
+        <div className="w-12 h-12 rounded-lg overflow-hidden bg-surface-100 flex-shrink-0 border border-surface-200">
+          {imgUrl ? (
+            <img
+              src={getFullImageUrl(imgUrl)}
+              alt={order.items[0]?.product_name || 'Product'}
+              className="w-full h-full object-cover"
+              onError={e => { e.currentTarget.style.display = 'none'; }}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <Package size={18} className="text-brand-300" />
+            </div>
+          )}
+        </div>
+
         {/* Identifier / Title */}
         <div className="flex flex-col flex-1 min-w-0 justify-center">
           <div className="flex items-center gap-2">
@@ -176,7 +194,6 @@ const OrderRow = ({ order, onClick }) => {
             {data.title !== `Order #${data.id}` && (
                <span className="text-[10px] font-mono text-brand-500 bg-surface-100 px-1.5 py-0.5 rounded border border-surface-200 hidden sm:inline-block">#{data.id}</span>
             )}
-            {data.inferred && <span className="text-[9px] text-brand-400 font-medium uppercase tracking-widest hidden lg:inline-block ml-1">Inferred</span>}
           </div>
           {data.estimation ? (
             <span className="text-[11px] font-medium text-accent-600 truncate mt-1 flex items-center gap-1.5">
@@ -256,8 +273,25 @@ const SideDrawer = ({ order, onClose }) => {
          
          {/* Content */}
          <div className="p-6 space-y-8 flex-1">
-            
+
+            {/* Product Image */}
+            {(() => {
+              const firstItem = order.items?.[0];
+              const imgUrl = firstItem?.image_url;
+              return imgUrl ? (
+                <div className="rounded-xl overflow-hidden border border-surface-200 bg-surface-50 aspect-[16/7]">
+                  <img
+                    src={imgUrl}
+                    alt={firstItem?.product_name || 'Product'}
+                    className="w-full h-full object-cover"
+                    onError={e => { e.currentTarget.style.display = 'none'; }}
+                  />
+                </div>
+              ) : null;
+            })()}
+
             {/* Timeline */}
+
             <div className="space-y-5">
               <h4 className="text-xs font-bold text-brand-400 uppercase tracking-widest flex items-center justify-between pb-2 border-b border-surface-100">
                 <span className="flex items-center gap-2"><Truck size={14} className="text-brand-300"/> Tracking History</span>

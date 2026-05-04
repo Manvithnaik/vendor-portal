@@ -67,7 +67,7 @@ class OrganizationService:
 
 
     def update_verification_status(
-        self, org_id: int, frontend_status: str, admin_id: int
+        self, org_id: int, frontend_status: str, admin_id: int, reason: str = None
     ) -> Organization:
         """Admin endpoint: approve/reject an org application. Logs to audit_logs."""
         org = self.get_by_id(org_id)
@@ -85,18 +85,22 @@ class OrganizationService:
             
         updated_org = self.repo.update(org)
 
-        # Log to audit_logs
+        # Log to audit_logs — include reason so status page can display it
         from app.models.vendor_portal import AuditLog
+        new_vals = {"verification_status": frontend_status}
+        if reason:
+            new_vals["reason"] = reason
         self.db.add(AuditLog(
             entity_type="organization",
             entity_id=org_id,
             action=frontend_status,  # "verified" or "rejected"
             old_values={"verification_status": old_status},
-            new_values={"verification_status": frontend_status},
+            new_values=new_vals,
             changed_by=admin_id
         ))
         self.db.commit()
         return updated_org
+
 
     def get_pending_applications(self):
         return self.repo.get_pending_verification()
