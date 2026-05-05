@@ -16,7 +16,10 @@ const readFileAsBase64 = (file) =>
 
 // ── Product card ─────────────────────────────────────────────────────────────
 const ProductCard = ({ p, onEdit, onDelete }) => (
-  <div className="card overflow-hidden hover:shadow-elevated transition-shadow flex flex-col">
+  <div 
+    className="card overflow-hidden hover:shadow-elevated transition-shadow flex flex-col cursor-pointer"
+    onClick={() => onEdit(p)}
+  >
     {/* Image / placeholder */}
     <div className="w-full h-40 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center overflow-hidden">
       {p.image ? (
@@ -31,7 +34,7 @@ const ProductCard = ({ p, onEdit, onDelete }) => (
         <div className="min-w-0">
           <h3 className="font-semibold text-brand-900 truncate">{p.name}</h3>
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+        <div className="flex items-center gap-1 flex-shrink-0 ml-2" onClick={e => e.stopPropagation()}>
           <button
             onClick={() => onEdit(p)}
             className="p-1.5 rounded-lg hover:bg-brand-50 text-brand-400 hover:text-brand-700 transition-colors"

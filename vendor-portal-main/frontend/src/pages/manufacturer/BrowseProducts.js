@@ -118,7 +118,11 @@ const BrowseProducts = () => {
             const qty = getQty(p.id);
 
             return (
-              <div key={p.id} className="card p-5 hover:shadow-elevated transition-shadow flex flex-col">
+              <div 
+                key={p.id} 
+                className="card p-5 hover:shadow-elevated transition-shadow flex flex-col cursor-pointer"
+                onClick={() => !alreadySent && setRfqProduct(p)}
+              >
 
                 {/* Product image / icon */}
                 <div className="w-full h-36 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center mb-4 overflow-hidden">

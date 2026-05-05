@@ -58,19 +58,26 @@ const VendorProfile = () => {
       </div>
 
       {/* Header card */}
-      <div className="card p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-        <div className="w-14 h-14 rounded-xl bg-brand-100 flex items-center justify-center">
-          <span className="font-display font-bold text-xl text-brand-700">
-            {(app.orgName || 'V').charAt(0).toUpperCase()}
-          </span>
+      <div className="card p-8 bg-gradient-to-r from-brand-900 to-brand-800 text-white border-none overflow-hidden relative">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-20 -mt-20 blur-3xl" />
+        <div className="flex flex-col sm:flex-row items-center gap-6 relative z-10">
+          <div className="w-20 h-20 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-inner">
+            <span className="font-display font-bold text-3xl text-white">
+              {(app.orgName || 'V').charAt(0).toUpperCase()}
+            </span>
+          </div>
+          <div className="text-center sm:text-left flex-1">
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
+              <h2 className="font-display font-bold text-2xl">{app.orgName}</h2>
+              <span className="px-2.5 py-0.5 rounded-full bg-green-500/20 text-green-300 text-[10px] font-bold uppercase tracking-wider border border-green-500/30 backdrop-blur-sm">
+                Approved Vendor
+              </span>
+            </div>
+            <p className="text-brand-100 flex items-center justify-center sm:justify-start gap-1.5 mt-1 text-sm">
+              <Mail size={14} className="opacity-70" /> {app.email}
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="font-display font-bold text-xl text-brand-900">{app.orgName}</h2>
-          <p className="text-sm text-brand-400 flex items-center gap-1.5 mt-0.5">
-            <Mail size={13} /> {app.email}
-          </p>
-        </div>
-        <span className="badge badge-approved ml-auto">Approved</span>
       </div>
 
       {/* Detail sections */}

@@ -183,7 +183,11 @@ const VendorOrders = () => {
               </thead>
               <tbody className="divide-y divide-surface-200">
                 {orders.map(o => (
-                  <tr key={o.id} className="hover:bg-surface-50 transition-colors">
+                  <tr 
+                    key={o.id} 
+                    className="hover:bg-surface-50 transition-colors cursor-pointer"
+                    onClick={() => setViewOrder(o)}
+                  >
                     <td className="px-5 py-3 font-mono text-xs text-brand-500">{o.order_number}</td>
                     <td className="px-5 py-3 font-medium text-brand-800">Org #{o.customer_org_id}</td>
                     <td className="px-5 py-3 text-brand-600">
@@ -232,7 +236,11 @@ const VendorOrders = () => {
               </div>
             ) : (
               rfqs.map(rfq => (
-                <div key={rfq.id} className="flex items-center justify-between px-5 py-4 hover:bg-surface-50 transition-colors">
+                <div 
+                  key={rfq.id} 
+                  className="flex items-center justify-between px-5 py-4 hover:bg-surface-50 transition-colors cursor-pointer"
+                  onClick={() => { setQuoteRFQ(rfq); setQuoteForm({ price: '', lead_time_days: '', compliance_notes: '' }); setQuoteError(''); }}
+                >
                   <div className="flex items-center gap-4 min-w-0">
                     <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
                       <Package size={16} className="text-indigo-600" />

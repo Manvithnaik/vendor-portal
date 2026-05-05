@@ -49,7 +49,11 @@ const PurchaseOrders = () => {
             </thead>
             <tbody className="divide-y divide-surface-200">
               {orders.map(o => (
-                <tr key={o.id} className="hover:bg-surface-50 transition-colors">
+                <tr 
+                  key={o.id} 
+                  className="hover:bg-surface-50 transition-colors cursor-pointer"
+                  onClick={() => setViewOrder(o)}
+                >
                   <td className="px-5 py-3 font-mono text-xs text-brand-500">{o.order_number}</td>
                   <td className="px-5 py-3 font-medium text-brand-800">Org #{o.manufacturer_org_id}</td>
                   <td className="px-5 py-3 text-brand-600">
