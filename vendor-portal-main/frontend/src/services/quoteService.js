@@ -23,4 +23,14 @@ export const quoteService = {
   selectQuote: async (rfqId, quoteId) => {
     return await apiClient.post(`/vendor/rfq/${rfqId}/select-quote/${quoteId}`);
   },
+
+  /** List my quotes for checking which RFQs I've replied to */
+  myQuotes: async () => {
+    return await apiClient.get('/vendor/my-quotes');
+  },
+
+  /** Update a previously submitted quote (only while status=submitted) */
+  updateQuote: async (quoteId, data) => {
+    return await apiClient.patch(`/vendor/quotes/${quoteId}`, data);
+  },
 };

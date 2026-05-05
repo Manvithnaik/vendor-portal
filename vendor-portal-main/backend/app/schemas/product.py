@@ -61,7 +61,21 @@ class ProductResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Vendor info resolved from the related Organization
+    vendor_name: Optional[str] = None
+    vendor_email: Optional[str] = None
+    # Image URL stored in specifications JSON under key 'image_url' (no DB column change needed)
+    image_url: Optional[str] = None
+
     model_config = {"from_attributes": True}
+
+    @classmethod
+    def model_validate(cls, obj, *args, **kwargs):
+        instance = super().model_validate(obj, *args, **kwargs)
+        # Populate image_url from specifications dict if present
+        if instance.image_url is None and instance.specifications:
+            instance.image_url = instance.specifications.get('image_url')
+        return instance
 
 
 class InventoryUpdate(BaseModel):

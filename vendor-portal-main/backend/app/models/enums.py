@@ -6,13 +6,30 @@ import enum
 
 
 class OrgTypeEnum(str, enum.Enum):
-    customer = "customer"
-    manufacturer = "manufacturer"
+    """
+    DB-level org classification.
+
+    IMPORTANT — Domain inversion:
+      customer     = the BUYER role  → called "Manufacturer" in the UI
+      manufacturer = the VENDOR/SUPPLIER role → called "Vendor" in the UI
+
+    Use mappers.py to convert between DB values and frontend role strings.
+    In Python code, prefer the semantic aliases 'buyer_org_id' / 'buyer_org'
+    (column-aliased attributes) over direct use of these enum names where possible.
+    """
+    customer = "customer"        # Represents the BUYER ("Manufacturer" in UI)
+    manufacturer = "manufacturer"  # Represents the VENDOR/SUPPLIER ("Vendor" in UI)
 
 
 class RoleOrgTypeEnum(str, enum.Enum):
-    customer = "customer"
-    manufacturer = "manufacturer"
+    """
+    Scopes roles to an org classification.
+    Mirrors the OrgTypeEnum inversion:
+      customer     = role for BUYER orgs
+      manufacturer = role for VENDOR orgs
+    """
+    customer = "customer"        # Role for BUYER (Manufacturer in UI)
+    manufacturer = "manufacturer"  # Role for VENDOR (Vendor in UI)
     both = "both"
 
 
@@ -35,9 +52,9 @@ class OrderStatusEnum(str, enum.Enum):
     draft = "draft"
     submitted = "submitted"
     confirmed = "confirmed"
-    vendor_review = "vendor_review"    # Waiting for vendor to accept/reject PO
-    accepted = "accepted"              # Vendor accepted the PO
-    rejected = "rejected"              # Vendor rejected the PO
+    vendor_review = "vendor_review"    # PO sent to vendor; awaiting accept/reject
+    accepted = "accepted"              # Vendor accepted the PO → moves to processing
+    rejected = "rejected"              # Vendor rejected the PO (terminal)
     processing = "processing"
     ready_to_ship = "ready_to_ship"
     shipped = "shipped"

@@ -15,16 +15,26 @@ ADMIN_NAME     = "Platform Admin"
 
 db = SessionLocal()
 try:
+    from app.services.id_generator import IdGeneratorService
+
     existing = db.query(Admin).filter(Admin.email == ADMIN_EMAIL).first()
     if existing:
         # Update password hash in case it was hashed with old passlib
         existing.password_hash = hash_password(ADMIN_PASSWORD)
         existing.status = "active"
         existing.is_active = True
+        
+        # Backfill admin_code if missing
+        if not existing.admin_code:
+            existing.admin_code = IdGeneratorService.generate_sequence_code(db, "admin")
+
         db.commit()
-        print(f"[UPDATED] Admin '{ADMIN_EMAIL}' password re-hashed with bcrypt directly.")
+        print(f"[UPDATED] Admin '{ADMIN_EMAIL}' updated.")
     else:
+        admin_code = IdGeneratorService.generate_sequence_code(db, "admin")
+
         admin = Admin(
+            admin_code=admin_code,
             name=ADMIN_NAME,
             email=ADMIN_EMAIL,
             password_hash=hash_password(ADMIN_PASSWORD),
